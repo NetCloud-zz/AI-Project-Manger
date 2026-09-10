@@ -1,0 +1,2669 @@
+/* ==========================================================================
+   Design tokens
+   Mobile-first. Every value below is overridden per breakpoint at the bottom
+   of this file, so page-level code never needs its own media queries.
+   ========================================================================== */
+
+:root {
+  /* Colour */
+  --app-color-primary: #0b5cab;
+  --app-color-primary-soft: #e8f2fc;
+  --app-color-accent: #0d9488;
+  --app-color-accent-soft: #ecfdf5;
+  --app-color-bg: #eef2f7;
+  --app-color-surface: #ffffff;
+  --app-color-surface-muted: #f7f9fc;
+  --app-color-text: #1a2332;
+  --app-color-text-secondary: #5c6b7f;
+  --app-color-text-muted: #8b97a8;
+  --app-color-border: #e2e8f0;
+  --app-color-danger: #dc2626;
+  --app-color-warning: #d97706;
+  --app-color-success: #059669;
+
+  /* Typography */
+  --app-font-family:
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --app-font-size-page-title: 22px;
+  --app-font-size-section: 16px;
+  --app-font-size-card-title: 16px;
+  --app-font-size-body: 14px;
+  --app-font-size-caption: 12px;
+  --app-font-size-metric: 24px;
+
+  /* Spacing — 8pt scale; xxs is for tight metadata line runs only */
+  --app-spacing-xxs: 2px;
+  --app-spacing-xs: 4px;
+  --app-spacing-sm: 8px;
+  --app-spacing-md: 16px;
+  --app-spacing-lg: 24px;
+  --app-spacing-xl: 32px;
+
+  /* Radius */
+  --app-radius-sm: 6px;
+  --app-radius-md: 8px;
+  --app-radius-lg: 12px;
+  --app-radius-full: 999px;
+
+  /* Elevation */
+  --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --app-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+
+  /* Layout */
+  --app-page-max-width: 100%;
+  --app-page-narrow: 100%;
+  --app-page-form: 100%;
+  --app-page-padding: var(--app-spacing-md);
+  --app-sidebar-width: 0px;
+  --app-header-height: 52px;
+  --app-tabbar-height: 60px;
+
+  /* Components */
+  --app-control-height: 44px;
+  --app-card-padding: var(--app-spacing-md);
+  --app-card-radius: var(--app-radius-lg);
+  --app-grid-gap: var(--app-spacing-sm);
+  --app-grid-min: 260px;
+  --app-chart-height: 380px;
+}
+
+/* ==========================================================================
+   Reset
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--app-color-bg);
+  color: var(--app-color-text);
+  font-family: var(--app-font-family);
+  font-size: var(--app-font-size-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Guards against long words and wide children forcing horizontal page scroll. */
+body {
+  overflow-x: hidden;
+}
+
+/*
+ * Vertical spacing comes from container gaps and stacks. Leaving the browser's
+ * default heading/paragraph margins in place makes them add to those gaps,
+ * producing off-scale values like 28px or 40px.
+ */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ==========================================================================
+   App shell
+   ========================================================================== */
+
+.app-shell {
+  min-height: 100dvh;
+}
+
+.app-shell--auth {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.app-shell__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  min-height: calc(100dvh - var(--app-header-height) - var(--app-tabbar-height));
+}
+
+.app-main--full {
+  min-height: 100dvh;
+}
+
+/* Sidebar is hidden on mobile; the tab bar takes over. */
+.app-sidebar {
+  display: none;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--app-header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-spacing-sm);
+  padding: 0 var(--app-spacing-md);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--app-color-border);
+}
+
+.app-header__brand {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--app-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-header__user {
+  display: flex;
+  align-items: center;
+  gap: var(--app-spacing-sm);
+  flex-shrink: 0;
+}
+
+.app-avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--app-radius-full);
+  background: var(--app-color-primary-soft);
+  color: var(--app-color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--app-font-size-body);
+  font-weight: 600;
+}
+
+.app-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: space-around;
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--app-color-border);
+}
+
+.app-tabbar__item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--app-color-text-muted);
+  transition: color 0.15s ease;
+}
+
+.app-tabbar__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tabbar__item--active {
+  color: var(--app-color-primary);
+}
+
+.app-tabbar__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* ==========================================================================
+   Page container & header
+   ========================================================================== */
+
+/*
+ * Flex + gap owns the vertical rhythm between page blocks, so no page needs
+ * sibling-selector margins (which used to leak into grid children).
+ */
+.page-container {
+  width: 100%;
+  max-width: var(--app-page-max-width);
+  min-width: 0;
+  margin: 0 auto;
+  padding: var(--app-page-padding);
+  padding-bottom: calc(var(--app-page-padding) + var(--app-tabbar-height));
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-md);
+}
+
+.page-container--narrow {
+  max-width: var(--app-page-narrow);
+}
+
+.page-container--form {
+  max-width: var(--app-page-form);
+}
+
+.page-container--flush {
+  padding-bottom: var(--app-page-padding);
+}
+
+.page-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-spacing-xs);
+  margin-bottom: var(--app-spacing-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-color-primary);
+}
+
+.page-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--app-spacing-md);
+  flex-wrap: wrap;
+}
+
+.page-header__text {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.page-header__title {
+  margin: 0;
+  font-size: var(--app-font-size-page-title);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: var(--app-color-text);
+}
+
+.page-header__subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--app-color-text-secondary);
+}
+
+.page-header__action {
+  flex-shrink: 0;
+  display: flex;
+  gap: var(--app-spacing-sm);
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Section title
+   ========================================================================== */
+
+.section-title {
+  margin: 0;
+  font-size: var(--app-font-size-section);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--app-color-text);
+}
+
+/* Extra breathing room above a new section, on top of the container gap. */
+.section-title:not(:first-child),
+.section-header:not(:first-child) {
+  margin-top: var(--app-spacing-sm);
+}
+
+.section-title.section-title--flush,
+.section-header.section-header--flush {
+  margin-top: 0;
+}
+
+/* Title on the left, controls on the right. */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-spacing-sm);
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Card
+   ========================================================================== */
+
+.app-card {
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-card-radius);
+  padding: var(--app-card-padding);
+  box-shadow: var(--app-shadow-sm);
+  min-width: 0;
+}
+
+.app-card--interactive {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.app-card--interactive:hover {
+  box-shadow: var(--app-shadow-md);
+  border-color: var(--app-color-primary);
+}
+
+.app-card--plain {
+  box-shadow: none;
+}
+
+.app-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-spacing-sm);
+  flex-wrap: wrap;
+  margin: calc(var(--app-card-padding) * -1) calc(var(--app-card-padding) * -1)
+    var(--app-card-padding);
+  padding: var(--app-spacing-sm) var(--app-card-padding);
+  border-bottom: 1px solid var(--app-color-border);
+}
+
+.app-card__title {
+  font-size: var(--app-font-size-card-title);
+  font-weight: 600;
+  color: var(--app-color-text);
+}
+
+.app-card__footer {
+  margin-top: var(--app-card-padding);
+  padding-top: var(--app-spacing-sm);
+  border-top: 1px solid var(--app-color-border);
+}
+
+/* ==========================================================================
+   Stacks & grids
+   ========================================================================== */
+
+/*
+ * flex + gap rather than sibling margins: gap is a container property, so
+ * component libraries that set their own margins (antd does) cannot override it.
+ */
+.stack-sm,
+.stack-md,
+.stack-lg {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stack-sm {
+  gap: var(--app-spacing-sm);
+}
+
+.stack-md {
+  gap: var(--app-spacing-md);
+}
+
+.stack-lg {
+  gap: var(--app-spacing-lg);
+}
+
+/*
+ * Single column on mobile, then auto-fit so column count follows the available
+ * width instead of a hardcoded count.
+ */
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--app-grid-gap);
+  min-width: 0;
+}
+
+.card-grid > * {
+  min-width: 0;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--app-grid-gap);
+}
+
+.stat-grid > * {
+  min-width: 0;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--app-grid-gap);
+}
+
+/* ==========================================================================
+   Feedback states
+   ========================================================================== */
+
+.state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--app-spacing-md);
+  padding: var(--app-spacing-xl) var(--app-spacing-md);
+  text-align: center;
+  color: var(--app-color-text-muted);
+  font-size: 13px;
+}
+
+.state-block__icon {
+  font-size: 32px;
+  line-height: 1;
+  color: var(--app-color-text-muted);
+}
+
+.state-block__icon--error {
+  color: var(--app-color-danger);
+}
+
+.state-block__title {
+  font-size: var(--app-font-size-body);
+  font-weight: 600;
+  color: var(--app-color-text-secondary);
+}
+
+.state-block__description {
+  max-width: 380px;
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   Data toolbar & pagination
+   ========================================================================== */
+
+/* No bottom margin: the parent container's flex gap already spaces this. */
+.data-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-sm);
+  padding: var(--app-spacing-md);
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-card-radius);
+}
+
+.data-toolbar__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-sm);
+  min-width: 0;
+}
+
+.data-toolbar__field {
+  min-width: 0;
+}
+
+.data-toolbar__search {
+  flex: 2 1 240px;
+}
+
+.data-toolbar__select {
+  flex: 0 1 150px;
+  min-width: 120px;
+}
+
+.data-toolbar__select--sort {
+  flex: 0 1 170px;
+  min-width: 140px;
+}
+
+.data-toolbar__actions {
+  display: flex;
+  gap: var(--app-spacing-sm);
+}
+
+.data-toolbar__actions > * {
+  flex: 1;
+}
+
+.data-toolbar__summary {
+  font-size: var(--app-font-size-caption);
+  color: var(--app-color-text-muted);
+}
+
+/* No top margin: the parent container's flex gap already spaces this. */
+.app-pagination {
+  display: flex;
+  justify-content: center;
+}
+
+/* ==========================================================================
+   Entity cards
+   ========================================================================== */
+
+.entity-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--app-spacing-sm);
+}
+
+.entity-card__code {
+  font-size: var(--app-font-size-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--app-color-primary);
+}
+
+.entity-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--app-spacing-sm);
+}
+
+.entity-card__head .entity-card__name {
+  margin-top: 0;
+}
+
+.entity-card__name {
+  margin-top: var(--app-spacing-xs);
+  font-size: var(--app-font-size-card-title);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--app-color-text);
+  overflow-wrap: anywhere;
+}
+
+.entity-card__action {
+  display: block;
+  margin-top: var(--app-spacing-md);
+}
+
+.stat-tile {
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-card-radius);
+  padding: var(--app-card-padding) var(--app-spacing-sm);
+  text-align: center;
+}
+
+.stat-tile__label {
+  margin-bottom: var(--app-spacing-xs);
+  font-size: var(--app-font-size-caption);
+  color: var(--app-color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-tile__value {
+  font-size: var(--app-font-size-metric);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--app-color-text);
+}
+
+.stat-tile__value--success {
+  color: var(--app-color-success);
+}
+
+.stat-tile__value--warning {
+  color: var(--app-color-warning);
+}
+
+.stat-tile__value--danger {
+  color: var(--app-color-danger);
+}
+
+/* ==========================================================================
+   Inline bits
+   ========================================================================== */
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--app-spacing-sm);
+}
+
+.chip-row--flush {
+  margin-top: 0;
+}
+
+.meta-line {
+  font-size: var(--app-font-size-caption);
+  line-height: 1.6;
+  color: var(--app-color-text-muted);
+}
+
+.meta-line + .meta-line {
+  margin-top: var(--app-spacing-xxs);
+}
+
+/* Stacks space children with gap; this sibling margin would add on top of it. */
+.stack-sm > .meta-line + .meta-line,
+.stack-md > .meta-line + .meta-line,
+.stack-lg > .meta-line + .meta-line {
+  margin-top: 0;
+}
+
+.meta-line--accent {
+  color: var(--app-color-accent);
+}
+
+.meta-line--danger {
+  color: var(--app-color-danger);
+}
+
+.meta-line--spaced {
+  margin-top: var(--app-spacing-sm);
+}
+
+.detail-text {
+  margin: 0;
+  font-size: var(--app-font-size-body);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--app-color-text);
+}
+
+.detail-text--spaced {
+  margin-top: var(--app-spacing-sm);
+}
+
+.detail-list {
+  margin: var(--app-spacing-xs) 0 var(--app-spacing-md);
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--app-color-text-secondary);
+}
+
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-spacing-xs);
+  padding: 2px 8px;
+  border-radius: var(--app-radius-full);
+  background: var(--app-color-accent-soft);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--app-color-accent);
+}
+
+.field-label {
+  display: block;
+  margin-bottom: var(--app-spacing-sm);
+  font-size: var(--app-font-size-caption);
+  color: var(--app-color-text-muted);
+}
+
+.list-link {
+  display: block;
+}
+
+.full-width {
+  width: 100%;
+}
+
+/* ==========================================================================
+   Home
+   ========================================================================== */
+
+.home-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-md);
+  min-width: 0;
+}
+
+.home-layout__main,
+.home-layout__aside {
+  min-width: 0;
+}
+
+/* Flat surface with a primary accent rule instead of a decorative gradient. */
+.home-hero {
+  padding: var(--app-spacing-lg);
+  margin-bottom: var(--app-spacing-md);
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-left: 3px solid var(--app-color-primary);
+  border-radius: var(--app-card-radius);
+}
+
+.home-hero__title {
+  margin: 0;
+  font-size: var(--app-font-size-page-title);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--app-color-text);
+}
+
+.home-hero__desc {
+  margin: var(--app-spacing-sm) 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--app-color-text-secondary);
+}
+
+.action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--app-card-padding);
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-card-radius);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-color-text);
+  text-align: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.action-tile:active {
+  background: var(--app-color-primary-soft);
+}
+
+.action-tile__icon {
+  font-size: 22px;
+  color: var(--app-color-primary);
+}
+
+/* ==========================================================================
+   Login
+   ========================================================================== */
+
+.login-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.login-hero {
+  padding: var(--app-spacing-xl) var(--app-spacing-md) var(--app-spacing-lg);
+  background: var(--app-color-primary);
+  color: #fff;
+  border-radius: 0 0 var(--app-card-radius) var(--app-card-radius);
+}
+
+.login-hero__badge {
+  display: inline-block;
+  margin-bottom: var(--app-spacing-md);
+  padding: 4px 10px;
+  border-radius: var(--app-radius-full);
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.login-hero__title {
+  margin: 0;
+  font-size: var(--app-font-size-page-title);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.login-hero__desc {
+  margin: var(--app-spacing-sm) 0 0;
+  font-size: var(--app-font-size-body);
+  line-height: 1.6;
+  opacity: 0.92;
+}
+
+.login-form-wrap {
+  flex: 1;
+  padding: var(--app-spacing-lg) var(--app-spacing-md);
+}
+
+.login-card {
+  padding: var(--app-spacing-lg) var(--app-spacing-md);
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-card-radius);
+  box-shadow: var(--app-shadow-md);
+}
+
+.login-divider {
+  margin: var(--app-spacing-lg) 0;
+  color: var(--app-color-text-muted);
+}
+
+/* ==========================================================================
+   Detail layouts
+   ========================================================================== */
+
+.project-detail-layout,
+.task-detail-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-md);
+  min-width: 0;
+}
+
+/* Same flex + gap rhythm as .page-container, one level down. */
+.project-detail-layout__main,
+.project-detail-layout__aside,
+.task-detail-layout__main,
+.task-detail-layout__sidebar {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-md);
+}
+
+.project-detail-layout__aside {
+  gap: var(--app-spacing-lg);
+}
+
+/* ==========================================================================
+   Agent chat
+   ========================================================================== */
+
+.agent-page-wrap {
+  display: flex;
+  min-height: 0;
+}
+
+.agent-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  height: calc(100dvh - var(--app-header-height) - var(--app-tabbar-height));
+}
+
+.agent-page--with-sidebar {
+  flex-direction: row;
+}
+
+.agent-page__sidebar-desktop {
+  display: none;
+}
+
+.agent-page__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.agent-page__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--app-spacing-sm);
+  padding: var(--app-spacing-md) var(--app-spacing-md) 0;
+}
+
+.agent-page__header .page-header {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-page__menu {
+  margin-top: 4px;
+}
+
+.agent-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--app-color-surface);
+}
+
+.agent-sidebar__top {
+  padding: var(--app-spacing-md);
+  border-bottom: 1px solid var(--app-color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-sidebar__archive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--app-font-size-caption);
+  color: var(--app-color-text-secondary);
+}
+
+.agent-sidebar__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--app-spacing-sm);
+}
+
+.agent-sidebar__empty {
+  padding: var(--app-spacing-md);
+}
+
+.agent-sidebar__item {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-radius: var(--app-radius-md);
+  margin-bottom: 4px;
+}
+
+.agent-sidebar__item.is-active {
+  background: var(--app-color-primary-soft);
+}
+
+.agent-sidebar__item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 10px 10px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.agent-sidebar__title {
+  font-size: var(--app-font-size-body);
+  font-weight: 500;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.agent-sidebar__time {
+  font-size: var(--app-font-size-caption);
+  color: var(--app-color-text-muted);
+}
+
+.agent-sidebar__more {
+  flex-shrink: 0;
+  width: 32px;
+  border: none;
+  background: transparent;
+  color: var(--app-color-text-muted);
+  cursor: pointer;
+  border-radius: var(--app-radius-sm);
+}
+
+.agent-sidebar__more:hover {
+  background: var(--app-color-surface-muted);
+  color: var(--app-color-text);
+}
+
+.agent-empty {
+  padding: var(--app-spacing-lg) var(--app-spacing-md) var(--app-spacing-sm);
+}
+
+.agent-empty__title {
+  margin: 0 0 var(--app-spacing-sm);
+  font-size: var(--app-font-size-section);
+  font-weight: 600;
+}
+
+.agent-empty__desc {
+  margin: 0 0 var(--app-spacing-md);
+  color: var(--app-color-text-secondary);
+  font-size: var(--app-font-size-body);
+  line-height: 1.6;
+}
+
+.agent-suggestions--wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.agent-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-md);
+  padding: var(--app-spacing-md);
+}
+
+.agent-bubble {
+  max-width: 88%;
+  padding: 12px 14px;
+  border-radius: var(--app-card-radius);
+  font-size: var(--app-font-size-body);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-bubble--user {
+  align-self: flex-end;
+  background: var(--app-color-primary);
+  color: #fff;
+  border-bottom-right-radius: var(--app-radius-sm);
+}
+
+.agent-bubble--assistant {
+  align-self: flex-start;
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-bottom-left-radius: var(--app-radius-sm);
+}
+
+.agent-bubble.is-failed {
+  border-color: var(--app-color-danger);
+}
+
+.agent-bubble.is-streaming .agent-bubble__content::after {
+  content: "▍";
+  animation: agent-caret 1s steps(1) infinite;
+  margin-left: 2px;
+  opacity: 0.55;
+}
+
+@keyframes agent-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.agent-bubble__role {
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
+
+.agent-bubble__content {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.agent-bubble__content .md-content {
+  line-height: 1.55;
+}
+
+.agent-bubble__content .md-content p {
+  margin: 0 0 0.6em;
+}
+
+.agent-bubble__content .md-content p:last-child {
+  margin-bottom: 0;
+}
+
+.agent-bubble__content .md-content ul,
+.agent-bubble__content .md-content ol {
+  margin: 0.4em 0 0.6em;
+  padding-left: 1.4em;
+}
+
+.agent-bubble__content .md-content pre {
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  font-size: 0.92em;
+}
+
+.agent-bubble__content .md-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.agent-bubble__content .md-content :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.agent-bubble__content .md-table-wrap {
+  overflow-x: auto;
+  margin: 0.6em 0;
+  max-width: 100%;
+}
+
+.agent-bubble__content .md-content table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.92em;
+}
+
+.agent-bubble__content .md-content th,
+.agent-bubble__content .md-content td {
+  border: 1px solid var(--app-color-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.agent-bubble__content .md-content blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.8em;
+  border-left: 3px solid var(--app-color-border);
+  opacity: 0.9;
+}
+
+.agent-bubble__tools {
+  margin-top: var(--app-spacing-sm);
+  opacity: 0.7;
+}
+
+.agent-bubble__actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  opacity: 0.85;
+}
+
+.agent-bubble__versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Actionable cards attached to an assistant turn: draft, proposal, delivery. */
+.agent-bubble__cards {
+  margin-top: var(--app-spacing-sm);
+}
+
+.agent-bubble__cards .app-card {
+  background: var(--app-color-bg-elevated, #fff);
+}
+
+.agent-tool-activity {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--app-color-border);
+  color: var(--app-color-text-secondary, #666);
+  font-size: 13px;
+}
+
+.agent-tool-activity__item {
+  line-height: 1.5;
+}
+
+.agent-tool-activity__item.is-running {
+  opacity: 0.9;
+}
+
+.agent-tool-activity__item.is-done {
+  opacity: 0.7;
+}
+
+.agent-tool-activity__item.is-failed {
+  color: var(--app-color-danger);
+}
+
+.agent-scroll-bottom {
+  position: sticky;
+  bottom: 8px;
+  display: block;
+  margin: 8px auto 0;
+  padding: 6px 12px;
+  border: 1px solid var(--app-color-border);
+  border-radius: 999px;
+  background: var(--app-color-surface);
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.agent-input-bar {
+  padding: var(--app-spacing-sm) var(--app-spacing-md)
+    calc(var(--app-spacing-sm) + env(safe-area-inset-bottom));
+  background: var(--app-color-surface);
+  border-top: 1px solid var(--app-color-border);
+}
+
+.agent-input-bar__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--app-spacing-sm);
+}
+
+.agent-suggestions {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0;
+  scrollbar-width: none;
+}
+
+.agent-suggestions::-webkit-scrollbar {
+  display: none;
+}
+
+.agent-loading {
+  text-align: center;
+  padding: var(--app-spacing-lg);
+}
+
+.suggestion-chip {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--app-radius-full);
+  background: var(--app-color-primary-soft);
+  color: var(--app-color-primary);
+  font-family: inherit;
+  font-size: var(--app-font-size-caption);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Gantt — status color encoding + modal shell
+   Colors carry status information; keep tokens in sync with lib/gantt-status.ts
+   ========================================================================== */
+
+:root {
+  /* Task status — left-hand 状态 column and badges only. */
+  --gantt-status-not-started: #94a3b8;
+  --gantt-status-not-started-track: #e2e8f0;
+  --gantt-status-progress: #3b82f6;
+  --gantt-status-progress-track: #bfdbfe;
+  --gantt-status-completed: #22c55e;
+  --gantt-status-completed-track: #dcfce7;
+  --gantt-status-risk: #f59e0b;
+  --gantt-status-risk-track: #fef3c7;
+  --gantt-status-delayed: #ef4444;
+  --gantt-status-delayed-track: #fee2e2;
+  --gantt-status-paused: #8b5cf6;
+  --gantt-status-paused-track: #ddd6fe;
+
+  /* Risk level — timeline bar fills. Lifted from the Excel tracker's theme. */
+  --gantt-risk-on-track: #20a472;
+  --gantt-risk-low: #00b0f0;
+  --gantt-risk-med: #4868e5;
+  --gantt-risk-high: #842d96;
+  --gantt-risk-unassigned: #e5e5e5;
+
+  --gantt-milestone: #7c3aed;
+  --gantt-today: #c00000;
+  --gantt-today-soft: #fdf2f2;
+  --gantt-weekend-bg: #f7f8fa;
+  --gantt-weekday-bg: #ffffff;
+  --gantt-grid-line: #e6e9ee;
+  --gantt-month-boundary: #bfbfbf;
+  --gantt-link: #94a3b8;
+  --gantt-link-hover: #64748b;
+  --gantt-critical-link: #ef4444;
+
+  /* Excel-like density: compact rows whose bars fill almost the whole cell. */
+  --gantt-row-height: 30px;
+  --gantt-bar-height: 24px;
+  --gantt-bar-radius: 0px;
+  --gantt-header-height: 54px;
+  --gantt-toolbar-height: 46px;
+  --gantt-legend-height: 38px;
+  --gantt-scale-band: #cfcfcf;
+  --gantt-scale-band-alt: #e3e3e3;
+  --gantt-table-header: #3f3f3f;
+  --gantt-zebra: #f4f5f7;
+  --gantt-group-text: #0b1653;
+  /* Overridden per render with the live day/week column width. */
+  --gantt-cell-width: 30px;
+}
+
+/* Modal: fixed 88vh — chart area scrolls when rows overflow */
+.gantt-modal .ant-modal-container {
+  display: flex;
+  flex-direction: column;
+  width: 1600px;
+  max-width: calc(100vw - 32px);
+  height: 88vh;
+  max-height: 88vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+.gantt-modal .ant-modal-body {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.gantt-modal__body {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Change-proposal list: local horizontal scroll so the page root does not grow. */
+.proposal-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.gantt-modal__body > .gantt-panel,
+.gantt-modal__body > .state-block {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.gantt-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-card-radius);
+  overflow: hidden;
+}
+
+.gantt-modal .gantt-panel {
+  border: 0;
+  border-radius: 0;
+  max-height: none;
+}
+
+.gantt-panel--compact {
+  height: 360px;
+}
+
+/* ---- Header 52~56px ---- */
+
+.gantt-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  height: var(--gantt-header-height);
+  padding: 0 14px;
+  border-bottom: 1px solid var(--app-color-border);
+}
+
+.gantt-panel__header-left,
+.gantt-panel__header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gantt-panel__title {
+  margin: 0;
+  max-width: min(42vw, 520px);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--app-color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-panel__help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--app-color-text-muted);
+  cursor: help;
+}
+
+.gantt-panel__help:hover {
+  color: var(--app-color-primary);
+  background: var(--app-color-primary-soft);
+}
+
+.gantt-panel__filter-chip {
+  margin: 0;
+  padding: 2px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+/* Prediction stated next to the title, visually distinct from committed dates. */
+.gantt-forecast-note {
+  padding: 2px 8px;
+  border: 1px dashed #c4b5fd;
+  border-radius: 999px;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.gantt-forecast-note--late {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.gantt-forecast-note--unknown {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.gantt-critical-chip {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: #fef2f2;
+  color: var(--gantt-critical-link);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* ---- Toolbar 44~48px ---- */
+
+.gantt-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: var(--gantt-toolbar-height);
+  height: auto;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--app-color-border);
+}
+
+.gantt-segmented.ant-segmented {
+  background: #f1f5f9;
+  padding: 2px;
+}
+
+.gantt-segmented.ant-segmented .ant-segmented-item {
+  border-radius: 4px;
+  min-height: 28px;
+  line-height: 28px;
+}
+
+.gantt-segmented.ant-segmented .ant-segmented-item-selected {
+  background: var(--app-color-primary) !important;
+  color: #fff !important;
+}
+
+.gantt-segmented.ant-segmented .ant-segmented-thumb {
+  background: var(--app-color-primary);
+}
+
+.gantt-nav .ant-btn {
+  min-width: 32px;
+}
+
+.gantt-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.gantt-zoom__label {
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--app-color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-panel__empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gantt-panel__chart {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/*
+ * Willow may nest more than one .wx-theme. The direct-child-only rule left the
+ * inner theme (and thus .wx-gantt) sized to content (~scale+rows), so the last
+ * task row sat flush against the horizontal scrollbar. Fill every theme layer.
+ */
+.gantt-panel__chart .wx-theme,
+.gantt-panel__chart .wx-gantt {
+  height: 100%;
+  min-height: 0;
+}
+
+.gantt-panel__chart .wx-gantt {
+  font-family: inherit;
+  --wx-gantt-bar-border-radius: var(--gantt-bar-radius);
+  --wx-gantt-task-color: var(--gantt-status-progress);
+  --wx-gantt-task-fill-color: var(--gantt-status-progress);
+  --wx-gantt-task-border-color: var(--gantt-status-progress);
+  --wx-gantt-milestone-color: var(--gantt-milestone);
+  --wx-gantt-marker-color: var(--gantt-today);
+  --wx-gantt-holiday-background: var(--gantt-weekend-bg);
+  --wx-gantt-holiday-color: var(--app-color-text-muted);
+  --wx-gantt-link-color: var(--gantt-link);
+  --wx-gantt-link-color-hovered: var(--gantt-link-hover);
+  --wx-gantt-link-critical-color: var(--gantt-critical-link);
+  --wx-gantt-link-critical-color-hovered: #dc2626;
+  --wx-gantt-critical-color: var(--gantt-status-delayed);
+  --wx-gantt-select-color: #f1f5f9;
+  --wx-gantt-border-color: var(--gantt-grid-line);
+  --wx-gantt-border: 1px solid var(--gantt-grid-line);
+}
+
+/* Timeline grid: soft lines, weekend / today cells */
+.gantt-panel__chart .wx-gantt .wx-grid .wx-cell,
+.gantt-panel__chart .wx-gantt .wx-chart .wx-cell,
+.gantt-panel__chart .wx-gantt .wx-scale .wx-cell {
+  background: var(--gantt-weekday-bg);
+  border-color: var(--gantt-grid-line);
+}
+
+/*
+ * `.wx-gantt-holidays` holds the weekend / today bands, positioned with inline
+ * `left` + `width` but left in static flow, so they need to be pinned to full
+ * row height here. Their fills are translucent so they compose with the zebra
+ * gradient painted by `.wx-bars` above them.
+ */
+.gantt-panel__chart .wx-gantt .wx-gantt-holidays {
+  position: relative;
+}
+
+.gantt-panel__chart .wx-gantt .wx-gantt-holidays > div {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.gantt-panel__chart .wx-gantt .wx-gantt-holidays .wx-weekend {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+.gantt-panel__chart .wx-gantt .wx-cell.wx-weekend {
+  background: var(--gantt-weekend-bg);
+}
+
+/*
+ * Today column. Excel marks it with a red left/right cell border rather than a
+ * marker line, and SVAR's `markers` prop renders nothing in this version, so
+ * the band inside `.wx-gantt-holidays` carries the whole treatment.
+ */
+.gantt-panel__chart .wx-gantt .gantt-today-cell,
+.gantt-panel__chart .wx-gantt .wx-cell.gantt-today-cell {
+  background: var(--gantt-today-soft) !important;
+  color: var(--gantt-today);
+  font-weight: 700;
+}
+
+/*
+ * Day view marks the single day on both sides, as Excel does. Coarser zooms
+ * highlight the whole containing week / month, where a single leading line
+ * reads as "now" instead of looking like a date range.
+ */
+.gantt-panel__chart .wx-gantt .wx-gantt-holidays .gantt-today-cell {
+  background: rgba(192, 0, 0, 0.04) !important;
+  border-left: 2px solid var(--gantt-today);
+  box-sizing: border-box;
+}
+
+.gantt-panel__chart--day .wx-gantt .wx-gantt-holidays .gantt-today-cell {
+  background: rgba(192, 0, 0, 0.07) !important;
+  border-right: 2px solid var(--gantt-today);
+}
+
+/* Zebra bands in the chart pane; `.wx-bars` has no per-row elements to style. */
+.gantt-panel__chart .wx-gantt .wx-chart .wx-bars {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 var(--gantt-row-height),
+    rgba(15, 23, 42, 0.035) var(--gantt-row-height) calc(var(--gantt-row-height) * 2)
+  );
+}
+
+/*
+ * Timeline header: grey month band over a lighter day/weekday band, as in the
+ * Excel sheet. `.wx-scale .wx-row` rows are ordered outermost unit first.
+ */
+.gantt-panel__chart .wx-gantt .wx-scale .wx-row .wx-cell {
+  background: var(--gantt-scale-band-alt);
+  border-color: #fff;
+  color: #1f2937;
+  font-size: 11px;
+}
+
+.gantt-panel__chart .wx-gantt .wx-scale .wx-row:first-child .wx-cell {
+  background: var(--gantt-scale-band);
+  border-right-color: var(--gantt-month-boundary);
+  font-weight: 600;
+}
+
+.gantt-panel__chart .wx-gantt .wx-scale .wx-row:last-child .wx-cell {
+  background: #ececec;
+  color: #4b5563;
+}
+
+/* Zebra striping across both panes, matching the banded Excel rows. */
+.gantt-panel__chart .wx-gantt .wx-table .wx-grid .wx-body .wx-row:nth-child(even),
+.gantt-panel__chart .wx-gantt .wx-chart .wx-bars .wx-row:nth-child(even) {
+  background: var(--gantt-zebra);
+}
+
+/* Row hover — left grid + keep alignment */
+.gantt-panel__chart .wx-gantt .wx-table .wx-row:hover,
+.gantt-panel__chart .wx-gantt .wx-grid .wx-row:hover {
+  background: #e8eef6;
+}
+
+/* Selected left row soft background */
+.gantt-panel__chart .wx-gantt .wx-table .wx-row.wx-selected,
+.gantt-panel__chart .wx-gantt .wx-grid .wx-row.wx-selected {
+  background: #dfe7f1;
+}
+
+/* Left table header: dark charcoal band with white labels. */
+.gantt-panel__chart .wx-gantt .wx-table .wx-grid .wx-header {
+  background: var(--gantt-table-header);
+}
+
+.gantt-panel__chart .wx-gantt .wx-table .wx-grid .wx-header .wx-cell {
+  background: var(--gantt-table-header);
+  border-color: #575757;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gantt-panel__chart .wx-gantt .wx-table .wx-grid .wx-header .wx-cell .wx-text {
+  color: #fff;
+}
+
+/* Group header rows sit flush against the section, without a zebra tint. */
+.gantt-panel__chart .wx-gantt .wx-row:has(.gantt-group-cell) {
+  background: #fff !important;
+  border-top: 1px solid var(--gantt-month-boundary);
+}
+
+/*
+ * Risk bars — SVAR custom types render as:
+ *   class="wx-bar wx-task gantt_high_risk"
+ *
+ * The Excel tracker paints whole day cells rather than drawing a bar, so bars
+ * are square-cornered, fully saturated, carry no label, and get faint white
+ * seams on day-column boundaries.
+ */
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task:not(.wx-milestone):not(.wx-split) {
+  height: var(--gantt-bar-height) !important;
+  margin-top: 3px;
+  line-height: var(--gantt-bar-height) !important;
+  border-radius: var(--gantt-bar-radius);
+  border-width: 0;
+  box-sizing: border-box;
+}
+
+/* Bars read as coloured cells, so the label lives in the left grid instead. */
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task .wx-content,
+.gantt-panel__chart .wx-gantt .wx-bar.wx-summary .wx-content {
+  color: transparent;
+  font-size: 0;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar .wx-progress-marker {
+  color: transparent;
+  font-size: 0;
+}
+
+/* Day view: 1px white seam every column, reproducing Excel's cell borders. */
+.gantt-panel__chart--day .wx-gantt .wx-bar.wx-task:not(.wx-milestone)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.85) 0 1px,
+    transparent 1px var(--gantt-cell-width)
+  );
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_on_track,
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_on_track .wx-segment {
+  background-color: var(--gantt-risk-on-track);
+  color: #fff;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_low_risk,
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_low_risk .wx-segment {
+  background-color: var(--gantt-risk-low);
+  color: #fff;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_med_risk,
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_med_risk .wx-segment {
+  background-color: var(--gantt-risk-med);
+  color: #fff;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_high_risk,
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_high_risk .wx-segment {
+  background-color: var(--gantt-risk-high);
+  color: #fff;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_unassigned,
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.gantt_unassigned .wx-segment {
+  background-color: var(--gantt-risk-unassigned);
+  color: #475569;
+}
+
+/*
+ * Excel paints each bar a single flat colour and reports completion in the
+ * Progress column, so the in-bar progress fill stays invisible.
+ */
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task .wx-progress-percent {
+  background-color: transparent;
+}
+
+/*
+ * Critical path: an outline rather than a fill, so a bar can say "no slack"
+ * without giving up the risk colour that says how the work is actually going.
+ */
+.gantt-panel__chart .wx-gantt .wx-bar.wx-task.is-critical {
+  outline: 2px solid var(--gantt-critical-link);
+  outline-offset: -1px;
+}
+
+/* Section header rows get a thin dark-navy span, matching the Excel headings. */
+.gantt-panel__chart .wx-gantt .wx-bar.wx-summary,
+.gantt-panel__chart .wx-gantt .wx-bar.wx-summary .wx-segment {
+  background-color: var(--gantt-group-text);
+  border-color: var(--gantt-group-text);
+  border-radius: 0;
+  color: #fff;
+  font-weight: 600;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-summary:not(.wx-split) {
+  height: 8px !important;
+  margin-top: 11px;
+  opacity: 0.55;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-summary .wx-progress-percent {
+  background-color: transparent;
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-milestone .wx-content {
+  background-color: var(--gantt-milestone);
+}
+
+.gantt-panel__chart .wx-gantt .wx-bar.wx-milestone.wx-critical .wx-content {
+  background-color: var(--gantt-status-delayed);
+}
+
+/* Hover: deepen ~8–10%, keep risk hue */
+.gantt-panel__chart .wx-gantt .wx-bar:not(.wx-split):hover {
+  filter: brightness(0.9);
+  z-index: 2;
+}
+
+/* Selected: outline only */
+.gantt-panel__chart .wx-gantt .wx-bar.wx-selected:not(.wx-split):not(.wx-milestone) {
+  outline: 2px solid rgba(15, 23, 42, 0.45);
+  outline-offset: 0;
+}
+
+/* Dependencies */
+.gantt-panel__chart .wx-gantt .wx-line .wx-line-draw {
+  stroke: var(--gantt-link);
+  stroke-width: 1.5;
+  opacity: 0.65;
+}
+
+.gantt-panel__chart .wx-gantt .wx-line.wx-critical .wx-line-draw {
+  stroke: var(--gantt-critical-link);
+  opacity: 0.9;
+}
+
+.gantt-panel__chart .wx-gantt .wx-line.is-dimmed .wx-line-draw {
+  opacity: 0.2;
+}
+
+.gantt-panel__chart .wx-gantt .wx-line.is-related .wx-line-draw {
+  stroke: var(--gantt-link-hover);
+  opacity: 1;
+}
+
+/* Thin horizontal scrollbar — height stays in sync with --gantt-h-scroll. */
+.gantt-panel__chart .wx-gantt *::-webkit-scrollbar {
+  width: 10px;
+  height: 12px;
+}
+
+.gantt-panel__chart .wx-gantt *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.gantt-panel__chart .wx-gantt *::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.gantt-panel__chart .wx-gantt *::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.gantt-panel__chart .wx-gantt {
+  --gantt-h-scroll: 12px;
+  --gantt-scroll-gap: 2px;
+  --gantt-scroll-space: calc(var(--gantt-h-scroll) + var(--gantt-scroll-gap));
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/*
+ * Reserve physical space for SVAR's horizontal scrollbar.
+ * The scrollbar must never overlay the final Gantt row.
+ *
+ * Scroll owners (verified live + @svar-ui/react-gantt CSS):
+ *   left  → .wx-table-container { overflow-x: auto }
+ *   right → .wx-chart           { overflow-x: auto }
+ * .wx-scroll is forced overflow:visible!important inside Gantt — not the owner.
+ *
+ * Why the earlier owner padding-bottom looked broken:
+ *   Nested .wx-theme collapsed .wx-gantt to content height (~scale+rows), so the
+ *   last row sat on the scrollport floor where the overlay thumb is drawn.
+ *   With every .wx-theme/.wx-gantt filled to the chart height, the same padding
+ *   becomes a real bottom band: in-flow rows stay in the content box, and the
+ *   overlay/classic thumb paints inside the padding band below them.
+ * Both panes share the same padding so grid rows and bars stay aligned.
+ */
+.gantt-panel__chart .wx-gantt .wx-table-container,
+.gantt-panel__chart .wx-gantt .wx-chart {
+  box-sizing: border-box !important; /* SVAR uses content-box on the table pane */
+  padding-bottom: var(--gantt-scroll-space);
+}
+
+/* Absolute chart layers size against the padding box; pin them above the gutter. */
+.gantt-panel__chart .wx-gantt .wx-chart .wx-bars,
+.gantt-panel__chart .wx-gantt .wx-chart .wx-links,
+.gantt-panel__chart .wx-gantt .wx-chart .wx-gantt-holidays {
+  top: 0 !important;
+  bottom: var(--gantt-scroll-space) !important;
+  height: auto !important;
+}
+
+/* Grid / chart resizer */
+.gantt-panel__chart .wx-gantt .wx-resizer {
+  width: 5px;
+  background: transparent;
+}
+
+.gantt-panel__chart .wx-gantt .wx-resizer:hover,
+.gantt-panel__chart .wx-gantt .wx-resizer:active {
+  background: rgba(11, 92, 171, 0.12);
+}
+
+/*
+ * Mobile: SVAR compact mode (<=650px) only shows grid OR chart. Force the
+ * active pane so the timeline is reachable; the toolbar toggles the class.
+ */
+.gantt-panel--mobile.gantt-panel--timeline .wx-table-container {
+  flex: 0 0 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+.gantt-panel--mobile.gantt-panel--timeline .wx-chart {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+
+.gantt-panel--mobile.gantt-panel--timeline .wx-resizer {
+  display: none !important;
+}
+
+.gantt-panel--mobile.gantt-panel--list .wx-chart {
+  flex: 0 0 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.gantt-panel--mobile.gantt-panel--list .wx-table-container {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+.gantt-panel--mobile.gantt-panel--list .wx-resizer {
+  display: none !important;
+}
+
+/* ---- Legend: always-visible strip under the toolbar ---- */
+
+.gantt-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: var(--gantt-legend-height);
+  padding: 0 14px;
+  border-bottom: 1px solid var(--app-color-border);
+  overflow-x: auto;
+}
+
+.gantt-legend__caption {
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+
+/* Solid colour chips, echoing the legend blocks at the top of the Excel sheet. */
+.gantt-legend__chip {
+  padding: 2px 14px;
+  margin: 0;
+  border: 0;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0.92;
+}
+
+.gantt-legend__chip:hover {
+  opacity: 1;
+}
+
+.gantt-legend__chip.is-active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--app-color-text);
+}
+
+.gantt-legend__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+}
+
+.gantt-legend__critical-box {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border: 2px solid var(--gantt-critical-link);
+  border-radius: 2px;
+}
+
+.gantt-legend__today-line {
+  display: inline-block;
+  width: 2px;
+  height: 12px;
+  background: var(--gantt-today);
+}
+
+.gantt-legend__hint {
+  margin: 0 0 0 auto;
+  color: var(--app-color-text-muted);
+  font-size: 11px;
+}
+
+/* ---- Left grid cells ---- */
+
+.gantt-name-cell {
+  display: block;
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gantt-group-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gantt-group-text);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.gantt-group-cell__count {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(11, 22, 83, 0.08);
+  color: var(--gantt-group-text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.gantt-risk-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* In-cell data bar, mirroring the Excel Progress column. */
+.gantt-progress-cell {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 16px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.gantt-progress-cell.is-editable {
+  cursor: text;
+}
+
+.gantt-progress-cell.is-editable:hover {
+  outline: 1px dashed #94a3b8;
+  outline-offset: 1px;
+}
+
+.gantt-progress-cell__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(to bottom, #7fd8b4, #2fae7f);
+}
+
+.gantt-progress-cell__text {
+  position: relative;
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  color: #0f172a;
+}
+
+.gantt-owner-cell {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.gantt-owner-cell.is-editable {
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 1px 4px;
+}
+
+.gantt-owner-cell.is-editable:hover {
+  background: #eff6ff;
+  outline: 1px dashed #93c5fd;
+}
+
+.gantt-progress-editor.ant-input-number,
+.gantt-owner-editor.ant-select {
+  width: 100%;
+}
+
+.gantt-progress-editor .ant-input-number-input {
+  text-align: center;
+  padding-inline: 4px;
+}
+
+.gantt-owner-editor .ant-select-selector {
+  padding-inline: 4px !important;
+}
+
+.gantt-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.gantt-status-badge--not_started {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.gantt-status-badge--progress {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.gantt-status-badge--completed {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.gantt-status-badge--risk {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.gantt-status-badge--delayed {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.gantt-status-badge--paused {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+/* Selected left row soft background by status */
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected:has(.gantt-status-badge--progress) {
+  background: #eff6ff;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected:has(.gantt-status-badge--completed) {
+  background: #f0fdf4;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected:has(.gantt-status-badge--risk) {
+  background: #fffbeb;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected:has(.gantt-status-badge--delayed) {
+  background: #fef2f2;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected:has(.gantt-status-badge--paused) {
+  background: #f5f3ff;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected:has(.gantt-status-badge--not_started) {
+  background: #f8fafc;
+}
+
+/* Selected row tinted by status badge presence (soft defaults) */
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected .gantt-status-badge--progress {
+  box-shadow: 0 0 0 1px #bfdbfe;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected .gantt-status-badge--delayed {
+  box-shadow: 0 0 0 1px #fecaca;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected .gantt-status-badge--risk {
+  box-shadow: 0 0 0 1px #fde68a;
+}
+
+.gantt-panel__chart .wx-gantt .wx-row.wx-selected .gantt-status-badge--completed {
+  box-shadow: 0 0 0 1px #bbf7d0;
+}
+
+/* ==========================================================================
+   Progress form
+   ========================================================================== */
+
+.progress-textarea {
+  font-size: var(--app-font-size-body);
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   Tablet — 768px and up
+   ========================================================================== */
+
+@media (min-width: 768px) {
+  :root {
+    --app-font-size-page-title: 24px;
+    --app-font-size-section: 18px;
+    --app-font-size-metric: 28px;
+
+    --app-page-max-width: 1600px;
+    --app-page-narrow: 900px;
+    --app-page-form: 640px;
+    --app-page-padding: 20px;
+
+    --app-control-height: 36px;
+    --app-grid-gap: var(--app-spacing-md);
+    --app-grid-min: 280px;
+    --app-tabbar-height: 0px;
+    --app-sidebar-width: 72px;
+  }
+
+  .app-shell--auth {
+    flex-direction: row;
+  }
+
+  .app-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: var(--app-sidebar-width);
+    height: 100dvh;
+    padding: var(--app-spacing-lg) var(--app-spacing-sm);
+    background: var(--app-color-surface);
+    border-right: 1px solid var(--app-color-border);
+  }
+
+  .app-sidebar__brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--app-spacing-sm);
+    margin-bottom: var(--app-spacing-lg);
+    font-size: var(--app-font-size-card-title);
+    font-weight: 700;
+    color: var(--app-color-primary);
+  }
+
+  .app-sidebar__nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--app-spacing-xs);
+    overflow-y: auto;
+  }
+
+  .app-sidebar__link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: var(--app-radius-md);
+    font-size: var(--app-font-size-body);
+    font-weight: 500;
+    color: var(--app-color-text-secondary);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .app-sidebar__link:hover {
+    background: var(--app-color-primary-soft);
+    color: var(--app-color-primary);
+  }
+
+  .app-sidebar__link--active {
+    background: var(--app-color-primary-soft);
+    color: var(--app-color-primary);
+    font-weight: 600;
+  }
+
+  .app-sidebar__icon {
+    display: flex;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .app-sidebar__footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--app-spacing-sm);
+    margin-top: var(--app-spacing-md);
+    padding-top: var(--app-spacing-md);
+    border-top: 1px solid var(--app-color-border);
+  }
+
+  .app-sidebar__user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .app-sidebar__user-meta {
+    min-width: 0;
+  }
+
+  .app-sidebar__username {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--app-color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-sidebar__role {
+    font-size: 11px;
+    color: var(--app-color-text-muted);
+  }
+
+  /* Icon rail: labels collapse until the laptop breakpoint. */
+  .app-sidebar__label {
+    display: none;
+  }
+
+  .app-header,
+  .app-tabbar {
+    display: none;
+  }
+
+  .app-main {
+    min-height: 100dvh;
+  }
+
+  .page-container {
+    padding-bottom: var(--app-page-padding);
+  }
+
+  .page-container--narrow,
+  .page-container--form {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(var(--app-grid-min), 1fr));
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* Explicit counts so tiles stay aligned; every variant divides evenly. */
+  .stat-grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 220px));
+  }
+
+  .stat-grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .stat-grid--5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .action-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .action-tile:hover {
+    background: var(--app-color-primary-soft);
+    border-color: var(--app-color-primary);
+  }
+
+  /* Filters sit on one row and wrap when they run out of space. */
+  .data-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .data-toolbar__fields {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .data-toolbar__actions > * {
+    flex: 0 0 auto;
+  }
+
+  .app-pagination {
+    justify-content: flex-end;
+  }
+
+  .agent-page {
+    height: calc(100dvh - 2 * var(--app-spacing-md));
+    margin: var(--app-spacing-md) auto;
+    max-width: 1440px;
+    background: var(--app-color-surface);
+    border: 1px solid var(--app-color-border);
+    border-radius: var(--app-card-radius);
+    box-shadow: var(--app-shadow-md);
+    overflow: hidden;
+  }
+
+  .agent-page--with-sidebar .agent-page__sidebar-desktop {
+    display: flex;
+    flex: 0 0 260px;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--app-color-border);
+    background: var(--app-color-surface-muted);
+  }
+
+  .agent-page--with-sidebar .agent-page__menu {
+    display: none;
+  }
+
+  .agent-page--with-sidebar .agent-sidebar {
+    width: 100%;
+    background: transparent;
+  }
+
+  .agent-page-wrap {
+    width: 100%;
+    max-width: var(--app-page-max-width);
+    margin: 0 auto;
+    padding: 0 var(--app-page-padding);
+  }
+
+  .agent-bubble {
+    max-width: 85%;
+  }
+
+  .agent-suggestions {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .login-page {
+    flex-direction: row;
+  }
+
+  .login-hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100dvh;
+    padding: var(--app-spacing-xl);
+    border-radius: 0;
+  }
+
+  .login-form-wrap {
+    flex: 0 0 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--app-spacing-xl);
+    background: var(--app-color-surface);
+    border-left: 1px solid var(--app-color-border);
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 360px;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+}
+
+/* ==========================================================================
+   Laptop — 1024px and up
+   ========================================================================== */
+
+@media (min-width: 1024px) {
+  :root {
+    --app-page-padding: var(--app-spacing-lg);
+    --app-sidebar-width: 200px;
+    --app-chart-height: 440px;
+  }
+
+  .app-sidebar {
+    padding: var(--app-spacing-lg) var(--app-spacing-md);
+  }
+
+  .app-sidebar__brand,
+  .app-sidebar__link {
+    justify-content: flex-start;
+  }
+
+  .app-sidebar__brand {
+    padding: 0 var(--app-spacing-sm);
+  }
+
+  .app-sidebar__link {
+    padding: 10px 14px;
+  }
+
+  .app-sidebar__label {
+    display: inline;
+  }
+
+  .app-sidebar__footer {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .home-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: var(--app-spacing-lg);
+    align-items: start;
+  }
+
+  .project-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: var(--app-spacing-lg);
+    align-items: start;
+  }
+
+  .task-detail-layout {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: var(--app-spacing-lg);
+    align-items: start;
+  }
+}
+
+/* ==========================================================================
+   Desktop — 1440px and up
+   ========================================================================== */
+
+@media (min-width: 1440px) {
+  :root {
+    --app-page-padding: var(--app-spacing-xl);
+    --app-sidebar-width: 240px;
+    --app-card-padding: 20px;
+    --app-grid-min: 300px;
+    --app-chart-height: 500px;
+  }
+
+  .home-layout {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+
+  .project-detail-layout {
+    grid-template-columns: minmax(0, 1fr) 400px;
+  }
+}
+
+/* ==========================================================================
+   Modal & drawer — never exceed the viewport
+   ========================================================================== */
+
+.ant-modal {
+  max-width: calc(100vw - 2 * var(--app-spacing-md));
+}
+
+@media (max-width: 767px) {
+  .ant-modal {
+    top: var(--app-spacing-md);
+    margin: 0 auto;
+  }
+
+  .ant-drawer-content-wrapper {
+    max-width: 100vw;
+  }
+}
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,209 @@
+name: project-agent
+
+x-backend-env: &backend-env
+  ENVIRONMENT: ${ENVIRONMENT:-local}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-project_agent}:${POSTGRES_PASSWORD:-project_agent}@postgres:5432/${POSTGRES_DB:-project_agent}
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:8080,http://127.0.0.1:8080}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL_FAST: ${LLM_MODEL_FAST:-qwen-plus}
+  LLM_MODEL_REASONING: ${LLM_MODEL_REASONING:-deepseek-v3}
+  LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
+  AGENT_RECENT_MESSAGES: ${AGENT_RECENT_MESSAGES:-200}
+  AGENT_MAX_CONTEXT_TOKENS: ${AGENT_MAX_CONTEXT_TOKENS:-1000000}
+  AGENT_SUMMARY_TRIGGER_MESSAGES: ${AGENT_SUMMARY_TRIGGER_MESSAGES:-40}
+  WECOM_CORP_ID: ${WECOM_CORP_ID:-}
+  WECOM_AGENT_ID: ${WECOM_AGENT_ID:-}
+  WECOM_SECRET: ${WECOM_SECRET:-}
+  WECOM_REDIRECT_URL: ${WECOM_REDIRECT_URL:-}
+  FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
+  OA_MYSQL_HOST: ${OA_MYSQL_HOST:-}
+  OA_MYSQL_PORT: ${OA_MYSQL_PORT:-3306}
+  OA_MYSQL_USER: ${OA_MYSQL_USER:-}
+  OA_MYSQL_PASSWORD: ${OA_MYSQL_PASSWORD:-}
+  OA_MYSQL_DATABASE: ${OA_MYSQL_DATABASE:-}
+  OA_MYSQL_ADMIN_TABLE: ${OA_MYSQL_ADMIN_TABLE:-osri_admin}
+  OA_SSO_SECRET: ${OA_SSO_SECRET:-}
+  OA_SSO_MAX_AGE_SECONDS: ${OA_SSO_MAX_AGE_SECONDS:-300}
+  OA_BASE_URL: ${OA_BASE_URL:-}
+  DAILY_TASK_SCAN_HOUR: ${DAILY_TASK_SCAN_HOUR:-9}
+  MISSING_PROGRESS_SCAN_HOUR: ${MISSING_PROGRESS_SCAN_HOUR:-15}
+  DAILY_SUMMARY_HOUR: ${DAILY_SUMMARY_HOUR:-18}
+  RISK_SCAN_HOUR: ${RISK_SCAN_HOUR:-8}
+  SCHEDULER_TIMEZONE: ${SCHEDULER_TIMEZONE:-Asia/Shanghai}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-project_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-project_agent}
+      POSTGRES_DB: ${POSTGRES_DB:-project_agent}
+      # Chinese project names must sort and compare correctly.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-project_agent} -d ${POSTGRES_DB:-project_agent}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    restart: unless-stopped
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  worker:
+    build:
+      context: ./backend
+      target: runtime
+    restart: unless-stopped
+    command:
+      [
+        "celery",
+        "-A",
+        "app.workers.celery_app",
+        "worker",
+        "--loglevel=INFO",
+      ]
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "celery -A app.workers.celery_app inspect ping --timeout 5 2>/dev/null | grep -q pong",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  scheduler:
+    build:
+      context: ./backend
+      target: runtime
+    restart: unless-stopped
+    # Beat writes its schedule state to a file. The default path is the working
+    # directory (/app), which is root-owned while the container runs as appuser,
+    # so beat crash-looped on "Permission denied: 'celerybeat-schedule'" and none
+    # of the periodic scans ever ran. /tmp is writable and survives restarts.
+    command:
+      [
+        "celery",
+        "-A",
+        "app.workers.celery_app",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule=/tmp/celerybeat-schedule",
+      ]
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    healthcheck:
+      # Read /proc directly: procps (pgrep) is not installed in the runtime
+      # image, so the previous check always exited 127 and the container never
+      # reported healthy. Beat runs as PID 1 here.
+      test: ["CMD-SHELL", "grep -q beat /proc/1/cmdline"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+      args:
+        # Empty = same origin; the browser reaches the API through Nginx on :80.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_BASE_URL: http://backend:8000
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres-data:
+  redis-data:

@@ -1,0 +1,59 @@
+# --- secrets & local ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+secrets/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# --- node ---
+node_modules/
+.next/
+out/
+next-env.d.ts
+npm-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+# --- editors / os ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- runtime / ops artifacts (never publish) ---
+logs/
+*.log
+backups/
+*.dump
+*.sql.gz
+*.tar.gz
+*.xlsx
+*.xls
+*.csv
+!docs/**/*.md
+
+# --- local QA / eval data ---
+backend/tests/
+**/fixtures/
+docs/qa/
+uploads/
+tmp/
+.cursor/
+.claude/
+agent-transcripts/
