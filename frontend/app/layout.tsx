@@ -9,7 +9,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: APP_NAME,
-  description: "面向创新药研发企业的轻量级 AI 项目跟踪 Agent",
+  description: "面向多行业团队的轻量级 AI 项目管理 Agent",
 };
 
 export const viewport: Viewport = {

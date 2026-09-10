@@ -44,7 +44,7 @@ export interface RiskSummary {
 export const RISK_TYPE_LABELS: Record<RiskEventType, string> = {
   OVERDUE: "事实逾期",
   FORECAST_DELAY: "预测交付风险",
-  ISSUE: "研发问题风险",
+  ISSUE: "问题风险",
   MISSING_DATA: "信息缺失",
 };
 

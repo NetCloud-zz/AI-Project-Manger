@@ -3,7 +3,7 @@
 Usage:
     python -m app.scripts.backfill_task_duration                # dry run, prints a plan
     python -m app.scripts.backfill_task_duration --apply
-    python -m app.scripts.backfill_task_duration --project OPS-2071 --apply
+    python -m app.scripts.backfill_task_duration --project PRJ-1001 --apply
 
 Only tasks that have a start date and a due date are touched, and the duration
 is counted in the project's own working days. Nothing is guessed: a task with a

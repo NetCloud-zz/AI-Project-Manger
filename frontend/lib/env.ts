@@ -24,7 +24,7 @@ export const INTERNAL_API_BASE_URL = trimTrailingSlash(
     (PUBLIC_API_BASE_URL !== "" ? PUBLIC_API_BASE_URL : "http://backend:8000"),
 );
 
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "研发项目管理 Agent";
+export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "AI 项目管理 Agent";
 
 /**
  * Browser: same-origin when NEXT_PUBLIC is empty (Nginx entry).

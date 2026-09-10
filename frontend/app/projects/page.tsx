@@ -109,7 +109,7 @@ function ProjectsPageInner() {
     <PageContainer>
       <PageHeader
         title="项目"
-        subtitle="查看所有研发项目的状态与风险。"
+        subtitle="查看所有项目的状态与风险。"
         action={action}
       />
 
@@ -120,7 +120,7 @@ function ProjectsPageInner() {
       ) : projects.length === 0 ? (
         <EmptyState
           title="暂无项目"
-          description={canCreate ? "创建第一个项目开始跟踪研发进度。" : undefined}
+          description={canCreate ? "创建第一个项目开始跟踪进度。" : undefined}
           action={action}
         />
       ) : (

@@ -1,16 +1,18 @@
-# 项目手册（Project Agent Handbook）
+# 项目手册（AI 项目管理 Agent Handbook）
 
-**产品**：创新药研发项目管理 Agent  
+**产品**：AI 项目管理 Agent  
 **版权**：Copyright 2024–2026 Jack Zhang（`59841153z@gmail.com` / `598411539@qq.com`）  
 **许可**：Apache License 2.0（见仓库根目录 `LICENSE` / `NOTICE`）
 
-本文档合并原分散的使用说明、运维、安全与助手说明，作为开源发行版**唯一手册**。
+本文档为开源发行版**唯一手册**。产品面向多行业通用项目管理，不绑定医药、制造等单一领域。
 
 ---
 
 ## 1. 产品定位
 
-轻量级 AI 项目跟踪系统：成员维护「任务 / 负责人 / 完成时间 / 一句话进展」，系统负责进度跟踪、提醒、延期判断、风险识别、Issue、AI 总结、方案建议、管理层看板与自然语言查询。
+轻量级 AI 项目管理系统：成员维护「任务 / 负责人 / 完成时间 / 一句话进展」，系统负责进度跟踪、提醒、延期判断、风险识别、Issue、AI 总结、方案建议、管理层看板与自然语言查询。
+
+适用于软件交付、产品研发、运营活动、咨询实施、工程交付等需要「计划—执行—跟踪—风险」闭环的团队。
 
 **硬原则**
 
@@ -47,20 +49,9 @@ cp .env.example .env
 # 编辑 .env：至少设置 JWT_SECRET；生产务必更换全部密钥与数据库口令
 ```
 
-**切勿**把含真实 `LLM_API_KEY`、数据库密码、OA 口令、内网 IP 的 `.env` 提交到 Git（已在 `.gitignore`）。
+**切勿**把含真实 `LLM_API_KEY`、数据库密码、OA 口令、内网 IP 的 `.env` 提交到 Git。
 
-关键变量见 `.env.example`：
-
-| 变量 | 说明 |
-| --- | --- |
-| `DATABASE_URL` / `POSTGRES_*` | 数据库 |
-| `REDIS_URL` | Redis |
-| `JWT_SECRET` | 会话签名（生产必须更换） |
-| `LLM_BASE_URL` / `LLM_API_KEY` | 可选；空则 Stub |
-| `LLM_MODEL_FAST` / `LLM_MODEL_REASONING` | 快模型 / 对话推理模型 |
-| `WECOM_*` | 可选企业微信 |
-| `OA_MYSQL_*` / `OA_SSO_SECRET` | 可选 OA 只读库与免登 |
-| `SEED_*_PASSWORD` | `make seed` 时的演示账号口令（勿用默认值上生产） |
+关键变量见 `.env.example`。
 
 ### 3.2 Docker Compose（推荐）
 
@@ -79,7 +70,6 @@ cd backend && python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
-# 另开终端：celery worker / beat
 cd frontend && npm install && NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run dev
 ```
 
@@ -134,8 +124,6 @@ cd frontend && npm install && NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm
 `FRONTEND_BASE_URL` 必须是收件人能打开的地址。  
 LLM / WeCom 未配置时按设计降级（可见、可理解），不要当成静默成功。
 
-数据完整性：
-
 ```bash
 cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 ```
@@ -145,12 +133,10 @@ cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 ## 6. 安全边界
 
 - 密码 bcrypt；JWT；角色 ADMIN / EXECUTIVE / PROJECT_OWNER / MEMBER。
-- 对象访问在 Service / `permissions.py` 校验，不依赖前端隐藏。
-- 审计与日志脱敏：password、token、api_key 等。
+- 对象访问在 Service / `permissions.py` 校验。
+- 审计与日志脱敏。
 - OA MySQL **只读**；SSO 使用短时 HMAC。
-- Agent 工具以当前用户身份执行，复用同一套权限；项目改期需原因。
-
-**开源发行注意**：勿提交真实密钥、内网地址、客户数据、备份库、评测原始语料。
+- Agent 工具以当前用户身份执行，复用同一套权限。
 
 ---
 
@@ -158,10 +144,10 @@ cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 
 - 对话流式 SSE；请求层幂等（`client_request_id`）。
 - 工具结果瘦身与脱敏；乐观锁 / 版本冲突。
-- 生成中会话槽位：离开页面 stop / 超时回收，避免“无法再发消息”。
+- 生成中会话槽位：离开页面 stop / 超时回收。
 - 模型名来自环境变量 `LLM_MODEL_*`，改 `.env` 后需重启 backend/worker。
 
-Agent Skills（Claude Code / Cursor / Codex）见仓库 `mcp/skills/`。
+Agent Skills 见 `mcp/skills/`。
 
 ---
 
@@ -171,17 +157,15 @@ Agent Skills（Claude Code / Cursor / Codex）见仓库 `mcp/skills/`。
 .
 ├── LICENSE / NOTICE / COPYRIGHT
 ├── README.md
-├── docs/HANDBOOK.md          # 本手册
-├── mcp/skills/               # Agent Skills
-├── backend/app/              # FastAPI 应用
-├── frontend/                 # Next.js
+├── docs/HANDBOOK.md
+├── mcp/skills/
+├── backend/app/
+├── frontend/
 ├── deploy/nginx/
 ├── docker-compose.yml
 ├── .env.example
 └── Makefile
 ```
-
-本发行版不包含历史阶段设计稿、内部验收报告、本地备份、测试套件与业务样例数据。
 
 ---
 

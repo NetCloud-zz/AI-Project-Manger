@@ -147,7 +147,7 @@ export function TaskBranchesPanel({ task, canManage, onChanged }: Props) {
       ) : !hasBranches ? (
         <EmptyState
           title="暂无分支"
-          description="当化合物不合适需要换路线时，可从这里创建备用分支并切换。"
+          description="当主路线不可行需要换方案时，可从这里创建备用分支并切换。"
         />
       ) : (
         <div className="card-grid">
@@ -195,7 +195,7 @@ export function TaskBranchesPanel({ task, canManage, onChanged }: Props) {
       >
         <Form form={form} layout="vertical" onFinish={createBranch} initialValues={{ activate: true }}>
           <Form.Item label="分支名称" name="branch_label" rules={[{ required: true, max: 80 }]}>
-            <Input placeholder="例如：备用化合物 / 路线 B" />
+            <Input placeholder="例如：备用方案 / 路线 B" />
           </Form.Item>
           <Form.Item label="任务标题" name="task_name" rules={[{ required: true, max: 300 }]}>
             <Input />
@@ -211,7 +211,7 @@ export function TaskBranchesPanel({ task, canManage, onChanged }: Props) {
             name="reason"
             rules={[{ required: true, min: 2, message: "请说明为何新增/切换分支" }]}
           >
-            <Input.TextArea rows={3} placeholder="例如：原化合物 hERG 不合格，切换备用系列" />
+            <Input.TextArea rows={3} placeholder="例如：原方案工期或成本不可接受，切换备用路线" />
           </Form.Item>
         </Form>
       </Modal>

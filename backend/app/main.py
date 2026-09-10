@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(
-        title="创新药研发项目管理 Agent API",
+        title="AI 项目管理 Agent API",
         description="Lightweight AI project tracking agent for innovative drug R&D.",
         version=settings.APP_VERSION,
         docs_url="/docs",

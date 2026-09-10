@@ -92,7 +92,7 @@ class Task(TimestampMixin, Base):
     branch_option_id: Mapped[int | None] = mapped_column(
         ForeignKey("branch_options.id", ondelete="RESTRICT")
     )
-    # Free-text work stream (e.g. "Medicinal Chemistry", "CRO"). The Gantt view groups
+    # Free-text work stream (e.g. "Design", "Development", "QA"). The Gantt view groups
     # tasks by this value; unset tasks fall into a trailing "未分组" section.
     work_stream: Mapped[str | None] = mapped_column(String(120), nullable=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)

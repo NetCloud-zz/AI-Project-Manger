@@ -1,7 +1,7 @@
 [project]
 name = "project-agent-backend"
 version = "0.2.0"
-description = "Lightweight AI project tracking agent for innovative drug R&D - backend"
+description = "Lightweight AI project management agent - backend"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

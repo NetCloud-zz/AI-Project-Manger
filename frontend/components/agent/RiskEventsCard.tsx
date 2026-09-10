@@ -61,7 +61,7 @@ export function RiskEventsCard({ projectId }: { projectId: number }) {
       ) : summary ? (
         <p className="meta-line">
           未关闭 {summary.total} 条：事实逾期 {summary.OVERDUE}、预测交付风险{" "}
-          {summary.FORECAST_DELAY}、研发问题 {summary.ISSUE}、信息缺失 {summary.MISSING_DATA}
+          {summary.FORECAST_DELAY}、问题风险 {summary.ISSUE}、信息缺失 {summary.MISSING_DATA}
         </p>
       ) : null}
 

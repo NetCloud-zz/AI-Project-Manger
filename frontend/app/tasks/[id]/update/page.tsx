@@ -162,7 +162,7 @@ function TaskUpdateInner() {
         <Input.TextArea
           className="progress-textarea"
           rows={6}
-          placeholder="例如：动物实验已完成，样品已送分析，预计周五出结果。"
+          placeholder="例如：联调已完成，阻塞项已关闭，预计周五提测。"
           value={content}
           onChange={(event) => setContent(event.target.value)}
           maxLength={5000}

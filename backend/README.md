@@ -1,4 +1,4 @@
-# Backend — 研发项目管理 Agent
+# Backend — AI 项目管理 Agent
 
 FastAPI service that owns every business fact (owners, due dates, task/project
 status, permissions). The LLM layer only summarises and suggests; it never writes

@@ -17,7 +17,7 @@ export default async function HomePage() {
           <section className="home-hero">
             <h1 className="home-hero__title">{APP_NAME}</h1>
             <p className="home-hero__desc">
-              面向创新药研发企业的轻量级 AI 项目跟踪 Agent
+              面向多行业团队的轻量级 AI 项目管理 Agent
             </p>
           </section>
 

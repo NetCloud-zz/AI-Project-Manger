@@ -63,7 +63,7 @@ function NewProjectPageInner() {
       <AppCard>
         <Form layout="vertical" onFinish={onFinish}>
           <Form.Item label="项目编号" name="project_code" rules={[{ required: true }]}>
-            <Input placeholder="OPS-2071" />
+            <Input placeholder="PRJ-1001" />
           </Form.Item>
           <Form.Item label="项目名称" name="project_name" rules={[{ required: true }]}>
             <Input placeholder="输入项目名称" />

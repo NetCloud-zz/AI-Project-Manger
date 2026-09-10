@@ -345,7 +345,7 @@ class ProjectContextService:
                 "未选中的备用路线任务不参与执行判断",
                 "与该问题无依赖关系且无未解决问题的任务未纳入",
                 "已解决的问题与已关闭的风险记录未纳入",
-                "实验报告附件不在本期范围内",
+                "附件与外部文档不在本期范围内",
             ],
             "generated_at": datetime.now(UTC).isoformat(),
         }

@@ -63,14 +63,14 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
     ),
     ToolDefinition(
         name="get_project",
-        description="Get one project by id or project_code (e.g. OPS-2071).",
+        description="Get one project by id or project_code (e.g. PRJ-1001).",
         parameters={
             "type": "object",
             "properties": {
                 "project_id": {"type": "integer", "description": "Numeric project id"},
                 "project_code": {
                     "type": "string",
-                    "description": "Project code such as OPS-2071",
+                    "description": "Project code such as PRJ-1001",
                 },
             },
         },
@@ -308,7 +308,7 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
             "properties": {
                 "project_code": {
                     "type": "string",
-                    "description": "Unique code, e.g. OPS-3001",
+                    "description": "Unique code, e.g. PRJ-2001",
                 },
                 "project_name": {"type": "string"},
                 "goal": {"type": "string"},
@@ -390,7 +390,7 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
             "Create/assign a Level-3 execution task under a project. Requires task_name, "
             "an owner, and project_id or project_code. start_date / due_date are optional "
             "(may be filled later). Use work_stream for the Level-2 phase name "
-            "(e.g. 药物化学) — phases themselves are not separate tasks and need no "
+            "(e.g. 设计/开发) — phases themselves are not separate tasks and need no "
             "owner or dates."
         ),
         parameters={
@@ -697,7 +697,7 @@ MANAGEMENT_TOOLS.extend(
 
 _PROJECT_REF = {
     "project_id": {"type": "integer"},
-    "project_code": {"type": "string", "description": "Project code such as OPS-2071"},
+    "project_code": {"type": "string", "description": "Project code such as PRJ-1001"},
 }
 
 _SCHEDULE_PATCH = {
@@ -765,7 +765,7 @@ _DRAFT_PLAN = {
         "project": {
             "type": "object",
             "properties": {
-                "project_code": {"type": "string", "description": "Unique code, e.g. OPS-3001"},
+                "project_code": {"type": "string", "description": "Unique code, e.g. PRJ-2001"},
                 "project_name": {"type": "string"},
                 "goal": {"type": "string"},
                 "owner_id": {"type": "integer"},

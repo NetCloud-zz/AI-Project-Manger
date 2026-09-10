@@ -301,7 +301,7 @@ function IssueDetailInner() {
       ) : !issue.suggested_solution ? (
         <AppCard>
           <p className="meta-line">
-            暂无建议。可点击「请求 AI 建议」生成辅助方案（非正式研发决策）。
+            暂无建议。可点击「请求 AI 建议」生成辅助方案（非正式业务决策）。
           </p>
         </AppCard>
       ) : (

@@ -224,7 +224,7 @@ export function ActionItemsPanel({
       >
         <Form form={form} layout="vertical" onFinish={submit}>
           <Form.Item label="内容" name="title" rules={[{ required: true, max: 300 }]}>
-            <Input placeholder="例如：向 CRO 索要原始数据" />
+            <Input placeholder="例如：向供应商索取交付清单" />
           </Form.Item>
           <Form.Item label="说明" name="description">
             <Input.TextArea rows={3} placeholder="补充背景或验收标准（可选）" />

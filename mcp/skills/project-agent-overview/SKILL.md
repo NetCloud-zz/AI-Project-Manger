@@ -1,7 +1,7 @@
 ---
 name: project-agent-overview
 description: >-
-  Project Agent (创新药研发项目管理) architecture, boundaries, repo layout,
+  AI Project Management Agent architecture, boundaries, repo layout,
   Apache-2.0 copyright rules. Use when onboarding, refactoring structure,
   or answering "how is this repo organized".
 ---
@@ -12,6 +12,7 @@ description: >-
 
 - **Source of truth**: PostgreSQL + FastAPI services (due dates, delay, status, owners, RBAC).
 - **AI**: summarization, risk hints, NLQ via Management Agent tools — never bypass permissions.
+- **Industry-agnostic**: software, ops, consulting, manufacturing, product delivery, etc.
 - **Optional**: LLM gateway, WeCom, OA read-only MySQL + SSO.
 
 ## Stack
@@ -27,7 +28,8 @@ description: >-
 2. Do **not** remove or replace copyright owner **Jack Zhang** in `LICENSE` / `NOTICE` / `COPYRIGHT`.
 3. Prefer small, task-scoped diffs; match existing patterns.
 4. Business writes go through services + permissions, not ad-hoc SQL in agents.
-5. Respond to end users in the language they use; code comments stay consistent with the file.
+5. Keep copy industry-neutral (no single-industry jargon in defaults).
+6. Respond to end users in the language they use; code comments stay consistent with the file.
 
 ## Key paths
 

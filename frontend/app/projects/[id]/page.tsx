@@ -286,7 +286,7 @@ function ProjectDetailInner() {
             <Form.Item
               label="所属工作流"
               name="work_stream"
-              extra="甘特图按工作流分组，例如「药物化学」「体外筛选」「CRO」。留空则归入未分组。"
+              extra="甘特图按工作流分组，例如「设计」「开发」「测试」「上线」。留空则归入未分组。"
             >
               <AutoComplete
                 options={workStreamOptions}

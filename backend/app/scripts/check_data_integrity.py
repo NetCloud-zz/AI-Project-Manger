@@ -2,7 +2,7 @@
 
 Usage:
     python -m app.scripts.check_data_integrity
-    python -m app.scripts.check_data_integrity --project OPS-2071
+    python -m app.scripts.check_data_integrity --project PRJ-1001
     python -m app.scripts.check_data_integrity --json > report.json
 
 Exits with 1 when any BLOCKING finding remains, so a pilot readiness gate can

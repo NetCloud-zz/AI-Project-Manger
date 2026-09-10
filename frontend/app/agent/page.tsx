@@ -1168,7 +1168,7 @@ function AgentPageInner() {
               <Input.TextArea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="输入问题，例如：OPS-2071 现在怎么样？"
+                placeholder="输入问题，例如：PRJ-1001 现在怎么样？"
                 autoSize={{ minRows: 1, maxRows: 12 }}
                 maxLength={AGENT_MESSAGE_MAX_CHARS}
                 onPressEnter={(event) => {

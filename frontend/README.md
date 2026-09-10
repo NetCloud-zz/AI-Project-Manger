@@ -1,4 +1,4 @@
-# Frontend — 研发项目管理 Agent
+# Frontend — AI 项目管理 Agent
 
 Next.js (App Router) + TypeScript + Ant Design. The primary surface is a phone
 browser or WeCom WebView, so every page is designed mobile-first and the desktop

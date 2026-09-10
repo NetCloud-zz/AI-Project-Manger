@@ -3,7 +3,7 @@
 Usage:
     python -m app.scripts.seed
 
-Creates default development users and the OPS-2071 demo project (Phase 12).
+Creates default development users and a generic demo project (PRJ-1001).
 Production deployments must override all default passwords via SEED_* env vars.
 """
 
@@ -71,7 +71,7 @@ DEFAULT_USERS: list[UserSeedSpec] = [
         "password_env": "SEED_OWNER_PASSWORD",
         "default_password": "Owner@12345",
         "role": UserRole.PROJECT_OWNER,
-        "department": "R&D",
+        "department": "Engineering",
     },
     {
         "name": "项目负责人乙",
@@ -79,7 +79,7 @@ DEFAULT_USERS: list[UserSeedSpec] = [
         "password_env": "SEED_OWNER2_PASSWORD",
         "default_password": "Owner2@12345",
         "role": UserRole.PROJECT_OWNER,
-        "department": "R&D",
+        "department": "Product",
     },
     {
         "name": "李四",
@@ -87,51 +87,51 @@ DEFAULT_USERS: list[UserSeedSpec] = [
         "password_env": "SEED_LISI_PASSWORD",
         "default_password": "Lisi@12345",
         "role": UserRole.MEMBER,
-        "department": "R&D",
+        "department": "Engineering",
     },
     {
-        "name": "研发成员甲",
+        "name": "成员甲",
         "username": "member",
         "password_env": "SEED_MEMBER_PASSWORD",
         "default_password": "Member@12345",
         "role": UserRole.MEMBER,
-        "department": "R&D",
+        "department": "Engineering",
     },
     {
-        "name": "研发成员乙",
+        "name": "成员乙",
         "username": "member2",
         "password_env": "SEED_MEMBER2_PASSWORD",
         "default_password": "Member2@12345",
         "role": UserRole.MEMBER,
-        "department": "R&D",
+        "department": "Product",
     },
     {
-        "name": "研发成员丙",
+        "name": "成员丙",
         "username": "member3",
         "password_env": "SEED_MEMBER3_PASSWORD",
         "default_password": "Member3@12345",
         "role": UserRole.MEMBER,
-        "department": "R&D",
+        "department": "Operations",
     },
     {
-        "name": "研发成员丁",
+        "name": "成员丁",
         "username": "member4",
         "password_env": "SEED_MEMBER4_PASSWORD",
         "default_password": "Member4@12345",
         "role": UserRole.MEMBER,
-        "department": "R&D",
+        "department": "Operations",
     },
 ]
 
-OPS_2071: dict[str, Any] = {
-    "project_code": "OPS-2071",
-    "project_name": "PCC Candidate 筛选",
-    "goal": "2026-12-20 前完成 PCC Candidate 确定",
+DEMO_PROJECT: dict[str, Any] = {
+    "project_code": "PRJ-1001",
+    "project_name": "示例产品上线",
+    "goal": "2026-12-20 前完成首版上线与验收",
     "target_date": date(2026, 12, 20),
     "tasks": [
         {
-            "task_name": "完成第二轮体外活性实验",
-            "work_stream": "体外筛选",
+            "task_name": "完成需求澄清与范围确认",
+            "work_stream": "规划",
             "owner_username": "member",
             "start_date": date(2026, 8, 25),
             "due_date": date(2026, 9, 15),
@@ -139,8 +139,8 @@ OPS_2071: dict[str, Any] = {
             "status": TaskStatus.IN_PROGRESS,
         },
         {
-            "task_name": "完成 PK 实验",
-            "work_stream": "药代评价",
+            "task_name": "完成核心功能开发",
+            "work_stream": "开发",
             "owner_username": "lisi",
             "start_date": date(2026, 8, 20),
             "due_date": date(2026, 9, 8),
@@ -148,8 +148,8 @@ OPS_2071: dict[str, Any] = {
             "status": TaskStatus.IN_PROGRESS,
         },
         {
-            "task_name": "完成初步安全性评估",
-            "work_stream": "安全性评价",
+            "task_name": "完成联调与测试",
+            "work_stream": "测试",
             "owner_username": "member2",
             "start_date": date(2026, 9, 16),
             "due_date": date(2026, 10, 1),
@@ -157,8 +157,8 @@ OPS_2071: dict[str, Any] = {
             "status": TaskStatus.TODO,
         },
         {
-            "task_name": "完成候选化合物综合评价",
-            "work_stream": "候选决策",
+            "task_name": "完成上线与验收复盘",
+            "work_stream": "上线",
             "owner_username": "member3",
             "start_date": date(2026, 10, 2),
             "due_date": date(2026, 11, 15),
@@ -208,7 +208,7 @@ def seed_users(db: Session) -> dict[str, User]:
 
 
 def seed_demo_project(db: Session, users_by_username: dict[str, User]) -> None:
-    project_code = str(OPS_2071["project_code"])
+    project_code = str(DEMO_PROJECT["project_code"])
     existing = db.scalar(select(Project).where(Project.project_code == project_code))
     if existing:
         logger.info("seed.project_exists", project_code=project_code)
@@ -221,17 +221,17 @@ def seed_demo_project(db: Session, users_by_username: dict[str, User]) -> None:
 
     project = Project(
         project_code=project_code,
-        project_name=str(OPS_2071["project_name"]),
-        goal=str(OPS_2071["goal"]),
+        project_name=str(DEMO_PROJECT["project_name"]),
+        goal=str(DEMO_PROJECT["goal"]),
         owner_id=owner.id,
-        target_date=OPS_2071["target_date"],
+        target_date=DEMO_PROJECT["target_date"],
         status=ProjectStatus.ACTIVE,
         risk_level=ProjectRiskLevel.NORMAL,
     )
     db.add(project)
     db.flush()
 
-    task_specs: list[TaskSeedSpec] = OPS_2071["tasks"]
+    task_specs: list[TaskSeedSpec] = DEMO_PROJECT["tasks"]
     tasks_by_index: dict[int, Task] = {}
     for index, task_spec in enumerate(task_specs):
         task_owner = users_by_username.get(task_spec["owner_username"])
@@ -257,7 +257,7 @@ def seed_demo_project(db: Session, users_by_username: dict[str, User]) -> None:
     db.flush()
 
     links_created = 0
-    for source_index, target_index in OPS_2071["links"]:
+    for source_index, target_index in DEMO_PROJECT["links"]:
         source = tasks_by_index.get(source_index)
         target = tasks_by_index.get(target_index)
         if source is None or target is None:
