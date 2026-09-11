@@ -11,7 +11,8 @@
 **版权所有**：Jack Zhang（`59841153z@gmail.com` / `598411539@qq.com`）  
 **开源协议**： [Apache License 2.0](LICENSE) — 详见 [NOTICE](NOTICE)。**版权人署名不得删除或替换。**
 
-完整手册：[docs/HANDBOOK.md](docs/HANDBOOK.md)  
+完整手册（总项目文档）：[docs/HANDBOOK.md](docs/HANDBOOK.md)  
+版本更新说明：[docs/releases/](docs/releases/README.md)  
 Agent Skills（Claude Code / Cursor / Codex）：[mcp/](mcp/README.md)
 
 ---

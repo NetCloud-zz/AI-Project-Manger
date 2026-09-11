@@ -20,7 +20,8 @@ description: >-
 - `backend/` FastAPI, SQLAlchemy 2, Alembic, Celery worker/beat
 - `frontend/` Next.js + TypeScript + Ant Design
 - `deploy/nginx/`, `docker-compose.yml`, `.env.example`
-- Handbook: `docs/HANDBOOK.md`
+- Handbook: `docs/HANDBOOK.md`（唯一总项目文档）
+- Version notes: `docs/releases/`（每个版本一份，见该目录 README）
 
 ## Hard rules for agents editing this repo
 

@@ -4,7 +4,7 @@ Copyright 2024–2026 Jack Zhang. Apache License 2.0 — retain NOTICE attributi
 
 Before changing code in this repository:
 
-1. Read `docs/HANDBOOK.md` for product boundaries (industry-agnostic AI project management).
+1. Read `docs/HANDBOOK.md` for product boundaries (industry-agnostic AI project management). Version changelogs live only under `docs/releases/` (one file per version).
 2. Load skills under `mcp/skills/*/SKILL.md` (overview, assistant, deploy).
 3. Never commit `.env`, keys, LAN IPs, dumps, or customer data.
 4. Do not remove or replace the copyright owner **Jack Zhang**.

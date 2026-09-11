@@ -134,9 +134,9 @@ build: ## Build all images
 .PHONY: package
 package: ## Build local source release tarball under dist/
 	@mkdir -p dist
-	@rm -f dist/project-agent-0.2.1.tar.gz
+	@rm -f dist/project-agent-0.2.2.tar.gz
 	@STAGE=$$(mktemp -d) && \
-	NAME=project-agent-0.2.1 && \
+	NAME=project-agent-0.2.2 && \
 	mkdir -p "$$STAGE/$$NAME" && \
 	rsync -a \
 	  --exclude='.git/' \
@@ -161,6 +161,7 @@ package: ## Build local source release tarball under dist/
 	  --exclude='agent-transcripts/' \
 	  --exclude='docs/qa/' \
 	  --exclude='docs/ops/' \
+	  --exclude='docs/reports/' \
 	  --exclude='docs/SYSTEM_FIX_PLAN.md' \
 	  --exclude='docs/MERGED_TEST_SUMMARY.md' \
 	  --exclude='docs/TEST_REPORT.md' \

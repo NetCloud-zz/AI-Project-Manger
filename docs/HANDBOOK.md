@@ -4,9 +4,18 @@
 **版权**：Copyright 2024–2026 Jack Zhang（`59841153z@gmail.com` / `598411539@qq.com`）  
 **许可**：Apache License 2.0（见仓库根目录 `LICENSE` / `NOTICE`）
 
-本文档为开源发行版的产品与运维主手册。产品面向多行业通用项目管理，不绑定医药、制造等单一领域。
+本文档为开源发行版的**唯一总项目文档**（产品定位、架构、运维与边界）。产品面向多行业通用项目管理，不绑定医药、制造等单一领域。
 
-真实网页操作、全功能检测和项目助手专项验收见 [全功能检测指导手册](FULL_FUNCTION_TESTING_GUIDE.md)。
+### 文档结构
+
+| 类型 | 位置 | 说明 |
+| --- | --- | --- |
+| 总项目文档 | 本手册 `HANDBOOK.md` | 只维护这一份总说明；不按版本拆多份主手册 |
+| 版本更新说明 | [releases/](releases/README.md) | **每个产品版本一份**（如 `0.2.2.md`），记录该版变更与升级要点 |
+| 专项附录 | 如 [AGENTSCOPE_ASSISTANT_RUNTIME.md](AGENTSCOPE_ASSISTANT_RUNTIME.md) | 技术专题，由本手册引用，不替代总文档或版本说明 |
+| 本地过程材料 | `reports/`（仅 README 约定） | 若需本机留档，勿写入真实姓名、业务项目名等隐私内容；不进入发行包 |
+
+当前版本：**0.2.2**（详见 [releases/0.2.2.md](releases/0.2.2.md)）。
 
 ---
 
@@ -172,7 +181,9 @@ Agent Skills 见 `mcp/skills/`。
 .
 ├── LICENSE / NOTICE / COPYRIGHT
 ├── README.md
-├── docs/HANDBOOK.md
+├── docs/
+│   ├── HANDBOOK.md          # 总项目文档（本手册）
+│   └── releases/            # 每版本一份更新说明
 ├── mcp/skills/
 ├── backend/app/
 ├── frontend/

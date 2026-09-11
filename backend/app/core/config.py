@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # --- Application ---
     APP_NAME: str = "project-agent"
-    APP_VERSION: str = "0.2.1"
+    APP_VERSION: str = "0.2.2"
     ENVIRONMENT: Environment = "local"
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"

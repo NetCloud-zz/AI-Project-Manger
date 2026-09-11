@@ -52,12 +52,16 @@ backups/
 # --- local QA evidence / machine-specific artifacts ---
 docs/qa/
 docs/ops/
+docs/reports/*
+!docs/reports/README.md
 docs/SYSTEM_FIX_PLAN.md
 docs/MERGED_TEST_SUMMARY.md
 docs/TEST_REPORT.md
 docs/FULL_FUNCTION_TESTING_GUIDE.md
 uploads/
 tmp/
+backups/
+dist/
 .cursor/
 .claude/
 agent-transcripts/
