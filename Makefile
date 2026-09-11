@@ -159,7 +159,12 @@ package: ## Build local source release tarball under dist/
 	  --exclude='tmp/' \
 	  --exclude='.cursor/' \
 	  --exclude='agent-transcripts/' \
-	  --exclude='docs/qa/**/screenshots/' \
+	  --exclude='docs/qa/' \
+	  --exclude='docs/ops/' \
+	  --exclude='docs/SYSTEM_FIX_PLAN.md' \
+	  --exclude='docs/MERGED_TEST_SUMMARY.md' \
+	  --exclude='docs/TEST_REPORT.md' \
+	  --exclude='docs/FULL_FUNCTION_TESTING_GUIDE.md' \
 	  --exclude='*.dump' \
 	  --exclude='*.sql.gz' \
 	  ./ "$$STAGE/$$NAME/" && \
