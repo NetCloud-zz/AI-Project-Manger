@@ -22,18 +22,21 @@ export function RiskEventsCard({ projectId }: { projectId: number }) {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
-  const load = useCallback(
-    () =>
-      listRiskEvents(projectId, "OPEN")
-        .then((result) => {
-          setEvents(result.items);
-          setSummary(result.summary);
-          setFailed(false);
-        })
-        .catch(() => setFailed(true))
-        .finally(() => setLoading(false)),
-    [projectId],
-  );
+  const load = useCallback(() => {
+    if (!Number.isFinite(projectId)) {
+      setFailed(true);
+      setLoading(false);
+      return Promise.resolve();
+    }
+    return listRiskEvents(projectId, "OPEN")
+      .then((result) => {
+        setEvents(result.items);
+        setSummary(result.summary);
+        setFailed(false);
+      })
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
+  }, [projectId]);
 
   useEffect(() => {
     void load();

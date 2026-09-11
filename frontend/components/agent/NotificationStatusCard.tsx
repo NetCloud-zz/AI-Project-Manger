@@ -31,7 +31,7 @@ export function NotificationStatusCard({
 
   const load = useCallback(
     () =>
-      (projectId && proposalId
+      (typeof projectId === "number" && Number.isFinite(projectId) && proposalId
         ? listProposalNotifications(projectId, proposalId)
         : listMyNotifications({ limit: 10 })
       )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -14,8 +14,10 @@ from app.core.permissions import (
     can_view_project,
     can_view_task,
 )
+from app.models.task import TaskStatus
 from app.models.user import User
 from app.schemas.task import (
+    MyTasksPage,
     TaskBranchActivate,
     TaskBranchCreate,
     TaskCreate,
@@ -29,6 +31,7 @@ from app.services.exceptions import (
     PermissionDeniedError,
     ProjectNotFoundError,
     TaskNotFoundError,
+    VersionConflictError,
 )
 from app.services.project import ProjectService
 from app.services.task import TaskService
@@ -96,13 +99,30 @@ def list_project_tasks(
     return [TaskResponse.model_validate(item) for item in tasks]
 
 
-@router.get("/tasks/my", response_model=list[TaskResponse])
+@router.get("/tasks/my", response_model=MyTasksPage)
 def list_my_tasks(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status_filter: TaskStatus | None = Query(None, alias="status"),
+    q: str | None = Query(None, max_length=200),
+    sort: str = Query("due", pattern="^(due|name|project)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[TaskResponse]:
-    tasks = TaskService(db).list_my_tasks(current_user)
-    return [TaskResponse.model_validate(item) for item in tasks]
+) -> MyTasksPage:
+    tasks, total = TaskService(db).list_my_tasks_page(
+        current_user,
+        page=page,
+        page_size=page_size,
+        status=status_filter,
+        q=q,
+        sort=sort,
+    )
+    return MyTasksPage(
+        items=[TaskResponse.model_validate(item) for item in tasks],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
@@ -153,6 +173,15 @@ def update_task(
             allow_core_fields=allow_core,
             ip_address=get_client_ip(request),
         )
+    except VersionConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "VERSION_CONFLICT",
+                "message": "Task was modified by another request; refresh and retry",
+                "current": exc.current,
+            },
+        ) from exc
     except DomainValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
     except OwnerNotFoundError as exc:

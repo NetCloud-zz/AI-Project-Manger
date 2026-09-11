@@ -11,6 +11,12 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import get_client_ip
+from app.core.login_rate_limit import (
+    LoginRateLimitExceeded,
+    assert_login_allowed,
+    clear_login_attempts,
+    record_login_failure,
+)
 from app.integrations.wecom.client import WeComClient
 from app.integrations.wecom.exceptions import WeComNotConfiguredError, WeComOAuthStateError
 from app.integrations.wecom.oauth_state import WeComOAuthStateStore
@@ -33,19 +39,33 @@ def login(
     request: Request,
     db: Session = Depends(get_db),
 ) -> LoginResponse:
+    ip_address = get_client_ip(request)
+    try:
+        assert_login_allowed(username=body.username, ip_address=ip_address)
+    except LoginRateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
     auth_service = AuthService(db)
     try:
         token, user = auth_service.login(
             username=body.username,
             password=body.password,
-            ip_address=get_client_ip(request),
+            ip_address=ip_address,
         )
     except AuthenticationError as exc:
+        record_login_failure(username=body.username, ip_address=ip_address)
+        # Persist auth.login_failed before the request session closes.
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         ) from exc
 
+    clear_login_attempts(username=body.username, ip_address=ip_address)
     db.commit()
     current_settings = get_settings()
     return LoginResponse(

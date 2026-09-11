@@ -14,6 +14,7 @@ from app.core.permissions import can_view_dashboard, can_view_personal_dashboard
 from app.models.task import Task, TaskStatus
 from app.models.user import User
 from app.schemas.dashboard import DashboardResponse, PersonalDashboardResponse
+from app.services.business_clock import BusinessClock
 from app.services.dashboard import DashboardService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -35,7 +36,7 @@ def get_dashboard(
 
 
 def _personal_dashboard(db: Session, user: User) -> PersonalDashboardResponse:
-    today = datetime.now(UTC).date()
+    today = BusinessClock().today()
     stmt = select(Task).where(
         Task.owner_id == user.id,
         Task.status.in_((TaskStatus.TODO, TaskStatus.IN_PROGRESS)),

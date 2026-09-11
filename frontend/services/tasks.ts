@@ -6,8 +6,29 @@ import type {
   TaskUpdateInput,
 } from "@/types/task";
 
-export async function fetchMyTasks(): Promise<Task[]> {
-  return request<Task[]>("/api/v1/tasks/my", { cache: "no-store" });
+export type MyTasksPage = {
+  items: Task[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type MyTasksQuery = {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  q?: string;
+  sort?: "due" | "name" | "project";
+};
+
+export async function fetchMyTasks(params: MyTasksQuery = {}): Promise<MyTasksPage> {
+  const query = new URLSearchParams();
+  query.set("page", String(params.page ?? 1));
+  query.set("page_size", String(params.pageSize ?? 20));
+  if (params.status) query.set("status", params.status);
+  if (params.q) query.set("q", params.q);
+  if (params.sort) query.set("sort", params.sort);
+  return request<MyTasksPage>(`/api/v1/tasks/my?${query}`, { cache: "no-store" });
 }
 
 export async function fetchTask(taskId: number): Promise<Task> {

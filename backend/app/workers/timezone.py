@@ -9,7 +9,7 @@ from app.core.config import settings
 
 
 def get_scheduler_timezone() -> ZoneInfo:
-    return ZoneInfo(settings.SCHEDULER_TIMEZONE)
+    return ZoneInfo(settings.BUSINESS_TZ or settings.SCHEDULER_TIMEZONE)
 
 
 def scheduler_today() -> date:

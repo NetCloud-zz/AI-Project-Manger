@@ -214,8 +214,8 @@ class UserService:
         if weixin and not existing.wechat_user_id:
             existing.wechat_user_id = weixin[:128]
         existing.oa_admin_id = record.id
-        if existing.status == UserStatus.INACTIVE:
-            existing.status = UserStatus.ACTIVE
+        # Never auto-reactivate a locally deactivated account via SSO/sync.
+        # Admins must explicitly set status=ACTIVE again.
         self.repo.save(existing)
         self.audit.record(
             action="user.sync_from_oa",

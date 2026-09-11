@@ -17,6 +17,7 @@ from app.repositories.progress_update import ProgressUpdateRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.task import TaskRepository
 from app.schemas.dashboard import ManagementAttentionItem
+from app.services.business_clock import BusinessClock
 from app.services.risk_engine import days_without_progress
 
 HIGH_OPEN_STALE_DAYS = 7
@@ -45,7 +46,7 @@ class ManagementAttentionService:
         today: date | None = None,
         now: datetime | None = None,
     ) -> list[ManagementAttentionItem]:
-        today = today or datetime.now(UTC).date()
+        today = today or BusinessClock().today()
         now = now or datetime.now(UTC)
         visible_projects = [
             project

@@ -32,7 +32,10 @@ class ProgressService:
         actor: User,
         ip_address: str | None = None,
     ) -> ProgressUpdate:
-        task = self.tasks.get_task(task_id)
+        # Row-lock the task so a concurrent hard-delete cannot leave a confusing
+        # dual-success window (progress FK is CASCADE, but clients still need a
+        # deterministic 404 when the task is already gone).
+        task = self.tasks.get_task_for_update(task_id)
         progress = ProgressUpdate(
             task_id=task_id,
             user_id=actor.id,

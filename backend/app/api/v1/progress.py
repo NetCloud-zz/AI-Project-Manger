@@ -43,12 +43,16 @@ def submit_progress(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
 
-    progress = ProgressService(db).submit_progress(
-        task_id,
-        body,
-        actor=current_user,
-        ip_address=get_client_ip(request),
-    )
+    try:
+        progress = ProgressService(db).submit_progress(
+            task_id,
+            body,
+            actor=current_user,
+            ip_address=get_client_ip(request),
+        )
+    except TaskNotFoundError as exc:
+        # Concurrent hard-delete after the initial visibility check.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
     from app.models.ai_run import AIRunType
     from app.services.ai_run import AIRunService
 

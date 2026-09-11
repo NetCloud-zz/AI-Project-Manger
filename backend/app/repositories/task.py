@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.task import Task
+from app.models.project import Project
+from app.models.task import Task, TaskStatus
 
 
 class TaskRepository:
@@ -18,6 +19,16 @@ class TaskRepository:
             .options(joinedload(Task.owner), joinedload(Task.project))
             .where(Task.id == task_id)
         )
+
+    def get_by_id_for_update(self, task_id: int) -> Task | None:
+        """Lock the task row for the rest of the transaction (delete/progress races)."""
+        task = self.db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+        if task is None:
+            return None
+        # Ensure relationships used by callers are available after the lock.
+        _ = task.owner
+        _ = task.project
+        return task
 
     def list_by_project(self, project_id: int) -> list[Task]:
         stmt = (
@@ -36,6 +47,49 @@ class TaskRepository:
             .order_by(Task.due_date, Task.id)
         )
         return list(self.db.scalars(stmt).unique().all())
+
+    def list_by_owner_paged(
+        self,
+        owner_id: int,
+        *,
+        status: TaskStatus | None = None,
+        q: str | None = None,
+        sort: str = "due",
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[Task], int]:
+        """Server-side filter/sort/page for /tasks/my."""
+        filters = [Task.owner_id == owner_id]
+        if status is not None:
+            filters.append(Task.status == status)
+        keyword = (q or "").strip()
+        needs_project = bool(keyword) or sort == "project"
+        if keyword:
+            like = f"%{keyword}%"
+            filters.append(
+                or_(
+                    Task.task_name.ilike(like),
+                    Project.project_code.ilike(like),
+                    Project.project_name.ilike(like),
+                )
+            )
+
+        count_stmt = select(func.count(Task.id)).where(*filters)
+        if needs_project:
+            count_stmt = count_stmt.join(Project, Project.id == Task.project_id)
+        total = int(self.db.scalar(count_stmt) or 0)
+
+        order = {
+            "name": (Task.task_name.asc(), Task.id.asc()),
+            "project": (Project.project_code.asc(), Task.id.asc()),
+            "due": (Task.due_date.asc().nulls_last(), Task.id.asc()),
+        }.get(sort, (Task.due_date.asc().nulls_last(), Task.id.asc()))
+
+        stmt = select(Task).options(joinedload(Task.owner), joinedload(Task.project))
+        if needs_project or sort == "project":
+            stmt = stmt.join(Project, Project.id == Task.project_id)
+        stmt = stmt.where(*filters).order_by(*order).offset(offset).limit(limit)
+        return list(self.db.scalars(stmt).unique().all()), total
 
     def add(self, task: Task) -> Task:
         self.db.add(task)

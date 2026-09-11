@@ -16,10 +16,12 @@ export function StatTile({
   value: number;
   tone?: Tone;
 }) {
+  // Zero must stay neutral so it is not read as “risk red / warning”.
+  const effectiveTone: Tone = value === 0 ? "default" : tone;
   return (
     <div className="stat-tile">
       <div className="stat-tile__label">{label}</div>
-      <div className={`stat-tile__value ${TONE_CLASS[tone]}`}>{value}</div>
+      <div className={`stat-tile__value ${TONE_CLASS[effectiveTone]}`}>{value}</div>
     </div>
   );
 }

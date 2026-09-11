@@ -81,7 +81,7 @@ def validate_coverage(plan: CommandPlanInput, source: str) -> list[tuple[int, in
             raise ValueError(f"{item.item_id} 的原文映射不匹配")
         spans.append((start, end))
     counts = re.findall(
-        r"(?:创建|新增|新建)(?:以下|这|共|总共|分别)?\s*(\d+)\s*(?:个|条|项)?(?:独立)?(?:执行)?任务",
+        r"(?:创建|新增|新建)(?:以下|这|共|总共|分别|恰好|正好)?\s*(\d+)\s*(?:个|条|项)?(?:独立)?(?:执行)?(?:的)?任务",
         source,
     )
     if counts and sum(int(n) for n in counts) != sum(i.tool == "create_task" for i in plan.items):

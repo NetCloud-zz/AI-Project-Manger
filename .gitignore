@@ -6,6 +6,7 @@
 *.key
 credentials*.json
 secrets/
+.secrets/
 
 # --- python ---
 __pycache__/
@@ -48,12 +49,11 @@ backups/
 *.csv
 !docs/**/*.md
 
-# --- local QA / eval data ---
-backend/tests/
-**/fixtures/
+# --- local QA evidence / machine-specific artifacts ---
 docs/qa/
 uploads/
 tmp/
 .cursor/
 .claude/
 agent-transcripts/
+/tmp/

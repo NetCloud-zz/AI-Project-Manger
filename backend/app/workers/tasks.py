@@ -126,7 +126,7 @@ async def _run_analysis(db: Session, progress_id: int) -> str:
             project_goal=task.project.goal,
             task_name=task.task_name,
             due_date=task.due_date,
-            current_date=date.today(),
+            current_date=scheduler_today(),
             historical_progress=historical,
             today_update=progress.raw_content,
         )

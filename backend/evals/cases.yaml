@@ -1,0 +1,41 @@
+# Assistant evaluation cases (OPT-11).
+# Run with: make eval-list  |  optional CI: pytest is not required; score offline.
+# Do NOT gate merges on live LLM — stub or recorded traces only.
+
+version: 1
+observations:
+  - role
+  - tools_called
+  - plan_policy
+  - succeeded_count
+  - failed_count
+  - persisted_ids
+  - final_status
+
+cases:
+  - id: CMD-01
+    role: PROJECT_OWNER
+    prompt: |
+      请在项目编码 {project_code}（项目ID {project_id}）中创建恰好 3 个新任务，
+      名称必须完全一致：{n1}；{n2}；{n3}。不要创建其它任务。
+    expect:
+      mutation: true
+      create_task_count: 3
+      policy: independent
+      min_persisted_tasks: 3
+
+  - id: AG-10
+    role: PROJECT_OWNER
+    prompt: |
+      只是讨论如何拆分项目 {project_code} 的里程碑，明确不要创建、不要修改、不要删除任何任务或项目。
+    expect:
+      mutation: false
+      create_task_count: 0
+      task_count_unchanged: true
+
+  - id: SEM-READ-01
+    role: MEMBER
+    prompt: 只回答：我当前有多少个进行中的任务？不要改数据。
+    expect:
+      mutation: false
+      tools_allow: [list_my_tasks, search_tasks, get_current_user]

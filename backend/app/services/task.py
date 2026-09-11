@@ -154,8 +154,38 @@ class TaskService:
     def list_my_tasks(self, user: User) -> list[Task]:
         return self.repo.list_by_owner(user.id)
 
+    def list_my_tasks_page(
+        self,
+        user: User,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        status: TaskStatus | None = None,
+        q: str | None = None,
+        sort: str = "due",
+    ) -> tuple[list[Task], int]:
+        page = max(1, page)
+        page_size = min(100, max(1, page_size))
+        if sort not in {"due", "name", "project"}:
+            sort = "due"
+        return self.repo.list_by_owner_paged(
+            user.id,
+            status=status,
+            q=q,
+            sort=sort,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+        )
+
     def get_task(self, task_id: int) -> Task:
         task = self.repo.get_by_id(task_id)
+        if task is None:
+            raise TaskNotFoundError
+        return task
+
+    def get_task_for_update(self, task_id: int) -> Task:
+        """Load and row-lock a task for mutating flows (update/delete/progress)."""
+        task = self.repo.get_by_id_for_update(task_id)
         if task is None:
             raise TaskNotFoundError
         return task
@@ -170,14 +200,15 @@ class TaskService:
         ip_address: str | None = None,
         expected_version: int | None = None,
     ) -> Task:
-        task = self.get_task(task_id)
+        task = self.get_task_for_update(task_id)
         project = task.project
         if project is None:
             raise ProjectNotFoundError
 
-        if expected_version is not None and int(getattr(task, "version", 1) or 1) != int(
-            expected_version
-        ):
+        expected = (
+            expected_version if expected_version is not None else data.expected_version
+        )
+        if expected is not None and int(getattr(task, "version", 1) or 1) != int(expected):
             from app.services.exceptions import VersionConflictError
 
             raise VersionConflictError(
@@ -193,6 +224,7 @@ class TaskService:
         old_snapshot = self.audit.task_to_dict(task)
         old_status = task.status
         updates = data.model_dump(exclude_unset=True)
+        updates.pop("expected_version", None)
 
         core_fields = {"task_name", "work_stream", "owner_id", "start_date", "due_date"} | set(
             TaskPlanningFields.model_fields
@@ -469,7 +501,8 @@ class TaskService:
         actor: User,
         ip_address: str | None = None,
     ) -> None:
-        task = self.get_task(task_id)
+        # Lock first so concurrent progress submissions cannot race past delete.
+        task = self.get_task_for_update(task_id)
         project = task.project
         if project is None:
             raise ProjectNotFoundError

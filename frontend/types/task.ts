@@ -47,6 +47,7 @@ export interface Task extends TaskPlanningFields {
   branch_root_id: number | null;
   branch_label: string | null;
   is_active_branch: boolean;
+  version: number;
   created_at: string;
   updated_at: string;
   owner?: TaskOwnerBrief | null;
@@ -71,6 +72,8 @@ export interface TaskUpdateInput extends TaskPlanningFields {
   due_date?: string | null;
   progress_percent?: number | null;
   status?: TaskStatus;
+  /** When set, must match the current task.version or the API returns 409. */
+  expected_version?: number;
 }
 
 export interface TaskBranchCreateInput {

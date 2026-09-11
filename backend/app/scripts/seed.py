@@ -28,6 +28,21 @@ from app.services.user import UserService
 
 logger = get_logger(__name__)
 
+# Documented demo passwords from older releases — never reuse on shared stacks.
+PUBLIC_SEED_PASSWORDS = frozenset(
+    {
+        "Admin@12345",
+        "Executive@12345",
+        "Owner@12345",
+        "Owner2@12345",
+        "Lisi@12345",
+        "Member@12345",
+        "Member2@12345",
+        "Member3@12345",
+        "Member4@12345",
+    }
+)
+
 
 class UserSeedSpec(TypedDict):
     name: str
@@ -171,6 +186,38 @@ DEMO_PROJECT: dict[str, Any] = {
 }
 
 
+def _resolve_seed_password(spec: UserSeedSpec) -> str:
+    settings = get_settings()
+    env_name = spec["password_env"]
+    from_env = (os.environ.get(env_name) or "").strip()
+    allow_public = settings.ENVIRONMENT == "local" and settings.ALLOW_PUBLIC_SEED_PASSWORDS
+
+    if from_env:
+        password = from_env
+    elif allow_public:
+        password = spec["default_password"]
+        logger.warning(
+            "seed.using_public_default_password",
+            username=spec["username"],
+            env=env_name,
+        )
+    else:
+        raise SystemExit(
+            f"Refusing to seed user {spec['username']!r} without {env_name}. "
+            "Set a strong password in the environment, or for a throwaway local "
+            "sandbox only set ALLOW_PUBLIC_SEED_PASSWORDS=true."
+        )
+
+    if password in PUBLIC_SEED_PASSWORDS and not allow_public:
+        raise SystemExit(
+            f"Refusing public seed password for {spec['username']!r}. "
+            f"Choose a unique value for {env_name}."
+        )
+    if len(password) < 10:
+        raise SystemExit(f"{env_name} must be at least 10 characters")
+    return password
+
+
 def seed_users(db: Session) -> dict[str, User]:
     service = UserService(db)
     users_by_username: dict[str, User] = {}
@@ -183,7 +230,7 @@ def seed_users(db: Session) -> dict[str, User]:
             users_by_username[username] = existing
             continue
 
-        password = os.environ.get(spec["password_env"], spec["default_password"])
+        password = _resolve_seed_password(spec)
         user = service.create_user(
             UserCreate(
                 name=spec["name"],

@@ -15,6 +15,7 @@ from app.integrations.oa.exceptions import (
     OaUserNotFoundError,
 )
 from app.integrations.oa.sso import verify_sso_sign
+from app.integrations.oa.sso_ticket_store import consume_sso_ticket
 from app.integrations.wecom.exceptions import WeComUserMappingError
 from app.models.user import User
 from app.repositories.user import UserRepository
@@ -160,6 +161,14 @@ class AuthService:
                 sign=sign,
                 secret=self.settings.OA_SSO_SECRET or "",
                 max_age_seconds=self.settings.OA_SSO_MAX_AGE_SECONDS,
+            )
+            # TTL covers the full skew window so a ticket cannot be replayed
+            # until it would already be rejected as expired.
+            consume_sso_ticket(
+                uid=uid,
+                ts=ts,
+                sign=sign,
+                ttl_seconds=self.settings.OA_SSO_MAX_AGE_SECONDS,
             )
         except OaSsoError as exc:
             self.audit.record(

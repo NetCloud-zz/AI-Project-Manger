@@ -48,6 +48,8 @@ class TaskUpdate(TaskPlanningFields):
     progress_percent: int | None = Field(default=None, ge=0, le=100)
     status: TaskStatus | None = None
     work_stream: str | None = Field(default=None, max_length=120)
+    # Optimistic concurrency: when set, must match the current task.version.
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 class TaskDeleteRequest(BaseModel):
@@ -99,6 +101,7 @@ class TaskResponse(TaskPlanningFields):
     branch_root_id: int | None = None
     branch_label: str | None = None
     is_active_branch: bool = True
+    version: int = 1
     created_at: datetime
     updated_at: datetime
     owner: TaskOwnerBrief | None = None
@@ -169,3 +172,12 @@ class ProjectGanttResponse(BaseModel):
     editable: bool
     tasks: list[TaskResponse]
     links: list[TaskLinkResponse]
+
+
+class MyTasksPage(BaseModel):
+    """Server-paged /tasks/my response."""
+
+    items: list[TaskResponse]
+    total: int
+    page: int
+    page_size: int

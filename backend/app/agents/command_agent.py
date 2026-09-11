@@ -34,7 +34,7 @@ expected_count 是实际工具步骤总数。原文明确创建 N 个任务时�
 缺失实体 ID 时交给执行器用名称精确解析，不要编造 ID。
 新建对象使用 {"$ref":"item_id.project.id"} 或 {"$ref":"item_id.task.id"} 引用结果，必须声明依赖。
 有先后含义、同一对象的修改和修改后的查询都须声明依赖。独立任务不设依赖。
-要么全部成功要么全部不做时 policy=atomic，否则 independent。
+仅当用户明确要求全成全败/全部回滚时 policy=atomic；多任务创建默认 independent（尽力执行，回执含成功/失败数）。
 不明确的修改幅度不能补成数值。只读问题使用查询工具。
 最近进展、顺利吗使用 get_project_progress_overview。
 无法明确参数时仍列出该指令，由执行器返回具体错误；不得静默省略。

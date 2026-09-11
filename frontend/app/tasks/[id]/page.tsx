@@ -132,7 +132,10 @@ function TaskDetailInner() {
     if (!task) return;
     setSaving(true);
     try {
-      const updated = await updateTask(task.id, { status });
+      const updated = await updateTask(task.id, {
+        status,
+        expected_version: task.version ?? 1,
+      });
       setTask(updated);
       message.success("状态已更新");
     } catch {

@@ -24,7 +24,7 @@ export type AgentCard =
   | { type: "change_proposal"; project_id: number; proposal_id: string; status: string; revision: number; reason: string }
   | { type: "schedule_preview"; project_id: number; feasible: boolean; changed_tasks: number }
   | { type: "notification_status"; proposal_id?: string; project_id?: number; recipient_id?: number }
-  | { type: "risk_events"; project_id: number }
+  | { type: "risk_events"; project_id?: number | null; scope?: string }
   | { type: "advice"; issue_id: number };
 
 export interface CommandPlan {

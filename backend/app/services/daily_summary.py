@@ -20,6 +20,7 @@ from app.repositories.progress_update import ProgressUpdateRepository
 from app.repositories.project import ProjectRepository
 from app.repositories.task import TaskRepository
 from app.services.audit import AuditService
+from app.services.business_clock import BusinessClock
 from app.services.exceptions import ProjectNotFoundError
 from app.services.management_attention import ManagementAttentionService
 from app.workers.timezone import day_bounds
@@ -54,7 +55,7 @@ class DailySummaryService:
         project = self.projects.get_by_id(project_id)
         if project is None:
             raise ProjectNotFoundError
-        summary_date = summary_date or date.today()
+        summary_date = summary_date or BusinessClock().today()
 
         if skip_if_exists:
             existing = self.repo.get_by_project_and_date(project_id, summary_date)
@@ -71,7 +72,7 @@ class DailySummaryService:
         summary_date: date | None = None,
     ) -> int:
         """Generate summaries for all ACTIVE projects; returns count created/updated."""
-        summary_date = summary_date or date.today()
+        summary_date = summary_date or BusinessClock().today()
         projects = self.projects.list_by_status(ProjectStatus.ACTIVE)
         count = 0
         for project in projects:

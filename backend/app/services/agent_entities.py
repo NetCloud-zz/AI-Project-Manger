@@ -156,14 +156,34 @@ _VAGUE = re.compile(
 _MUTATION = re.compile(
     r"创建|新增|新建|登记|记录|提交|更新|修改|设置|设为|改为|改成|调整|分配|指派|取消|延期|改期|完成度.*(?:改|调)|往前推|推进一点|宽松"
 )
+# Only cancel writes for clear read-only / discussion framing.
+# "不要创建其它任务" must NOT cancel an explicit create-N request.
+_READ_ONLY_INTENT = re.compile(
+    r"(?:"
+    r"(?:只是|仅仅)讨论|"
+    r"不要执行|"
+    r"不(?:要|用)进行任何(?:写入|修改|创建|操作)|"
+    r"明确不要创建[、,，\s]*不要修改|"
+    r"不要创建[、,，\s]*不要修改[、,，\s]*不要删除|"
+    r"只(?:读|查询)(?:[，。]|$)"
+    r")"
+)
 _FRESH_FACTS = re.compile(
     r"最近(?:进展|怎么样)|进展如何|顺不顺利|是否顺利|最需要关注|还好吗|当前风险|总体进度|做得怎么样"
 )
 
 
 def has_mutation_intent(source: str) -> bool:
-    return bool(_MUTATION.search(source)) and not bool(
-        re.search(r"只(?:读|查询)|不(?:要)?(?:执行|进行)?(?:任何)?(?:写入|修改|创建)", source)
+    if not _MUTATION.search(source):
+        return False
+    if not _READ_ONLY_INTENT.search(source):
+        return True
+    # Conflicting framing: explicit create-N still authorizes writes.
+    return bool(
+        re.search(
+            r"(?:创建|新增|新建)(?:以下|这|共|总共|分别|恰好|正好)?\s*\d+\s*(?:个|条|项)",
+            source,
+        )
     )
 
 

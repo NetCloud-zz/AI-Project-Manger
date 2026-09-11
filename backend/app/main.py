@@ -37,13 +37,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     configure_logging()
+    docs_url = "/docs" if settings.openapi_enabled else None
+    redoc_url = "/redoc" if settings.openapi_enabled else None
+    openapi_url = "/openapi.json" if settings.openapi_enabled else None
     app = FastAPI(
         title="AI 项目管理 Agent API",
-        description="Lightweight AI project tracking agent for innovative drug R&D.",
+        description="AI-assisted project tracking across industries.",
         version=settings.APP_VERSION,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url=docs_url,
+        redoc_url=redoc_url,
+        openapi_url=openapi_url,
         lifespan=lifespan,
     )
 

@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--seed-admin",
         action="store_true",
-        help="After wipe, create local admin/Admin@12345 (or SEED_ADMIN_PASSWORD)",
+        help="After wipe, create local admin (requires SEED_ADMIN_PASSWORD)",
     )
     args = parser.parse_args(argv)
 
@@ -109,9 +109,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.seed_admin:
         import os
 
-        password = os.environ.get("SEED_ADMIN_PASSWORD") or "Admin@12345"
+        password = (os.environ.get("SEED_ADMIN_PASSWORD") or "").strip()
+        if not password or password == "Admin@12345" or len(password) < 10:
+            print(
+                "Refusing --seed-admin without a strong SEED_ADMIN_PASSWORD "
+                "(not the public Admin@12345 demo).",
+                file=sys.stderr,
+            )
+            return 2
         seed_breakglass_admin(password=password)
-        print("Break-glass admin: username=admin")
+        print("Break-glass admin: username=admin (password from SEED_ADMIN_PASSWORD)")
     else:
         print("Wipe done. No local users remain; use OA SSO or --seed-admin.")
 

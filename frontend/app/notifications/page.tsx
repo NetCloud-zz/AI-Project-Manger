@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Button, Segmented, Space } from "antd";
+import { Button, Segmented } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 
 import { RequireAuth } from "@/components/auth/RequireAuth";
@@ -75,13 +75,13 @@ function NotificationsPageInner() {
           </Button>
         }
       />
-      <Space wrap>
+      <div className="filter-scroll">
         <Segmented
           value={filter}
           onChange={(value) => setFilter(value as Filter)}
           options={FILTERS}
         />
-      </Space>
+      </div>
       {failed ? (
         <ErrorState description="无法加载通知" onRetry={refresh} />
       ) : loading ? (

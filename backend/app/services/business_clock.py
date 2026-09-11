@@ -54,7 +54,12 @@ class BusinessClock:
         settings: Settings | None = None,
     ) -> None:
         cfg = settings or get_settings()
-        self.timezone = timezone or getattr(cfg, "SCHEDULER_TIMEZONE", DEFAULT_BUSINESS_TZ)
+        self.timezone = (
+            timezone
+            or getattr(cfg, "BUSINESS_TZ", None)
+            or getattr(cfg, "SCHEDULER_TIMEZONE", None)
+            or DEFAULT_BUSINESS_TZ
+        )
         self._zone = ZoneInfo(self.timezone)
         self._fixed_now = now
 

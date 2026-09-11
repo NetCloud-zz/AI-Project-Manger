@@ -13,6 +13,7 @@ from app.models.user import User
 from app.repositories.project import ProjectRepository
 from app.repositories.task import TaskRepository
 from app.schemas.dashboard import DashboardProjectItem, DashboardResponse
+from app.services.business_clock import BusinessClock
 from app.services.management_attention import ManagementAttentionService
 
 
@@ -30,8 +31,9 @@ class DashboardService:
         today: date | None = None,
         now: datetime | None = None,
     ) -> DashboardResponse:
-        today = today or datetime.now(UTC).date()
-        now = now or datetime.now(UTC)
+        clock = BusinessClock()
+        today = today or clock.today()
+        now = now or clock.now().astimezone(UTC)
         visible = [
             project
             for project in self.projects.list_for_user(user)

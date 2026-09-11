@@ -48,7 +48,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <section className="login-hero">
-        <span className="login-hero__badge">R&amp;D Project Agent</span>
+        <span className="login-hero__badge">{APP_NAME}</span>
         <h1 className="login-hero__title">{APP_NAME}</h1>
         <p className="login-hero__desc">
           每日一句话更新进展，管理层随时掌握项目风险与关键节点。

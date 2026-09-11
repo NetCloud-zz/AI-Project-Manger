@@ -24,7 +24,7 @@ function cardKey(card: AgentCard): string {
     case "notification_status":
       return `notification_status:${card.proposal_id ?? card.recipient_id ?? ""}`;
     case "risk_events":
-      return `risk_events:${card.project_id}`;
+      return `risk_events:${card.project_id ?? card.scope ?? "all"}`;
     case "advice":
       return `advice:${card.issue_id}`;
   }
@@ -37,16 +37,30 @@ function renderCard(card: AgentCard) {
     case "plan_draft":
       return <PlanDraftCard draftId={card.draft_id} />;
     case "change_proposal":
+      if (!Number.isFinite(card.project_id)) return null;
       return <ChangeProposalCard projectId={card.project_id} proposalId={card.proposal_id} />;
     case "notification_status":
       return (
         <NotificationStatusCard projectId={card.project_id} proposalId={card.proposal_id} />
       );
-    case "risk_events":
-      return <RiskEventsCard projectId={card.project_id} />;
+    case "risk_events": {
+      const projectId = card.project_id;
+      if (typeof projectId === "number" && Number.isFinite(projectId)) {
+        return <RiskEventsCard projectId={projectId} />;
+      }
+      // Multi-project scope has no single id — never hit /projects/undefined/…
+      return (
+        <AppCard plain title="风险记录">
+          <p className="meta-line">
+            已按你可见的全部项目汇总风险；详情见上方回复，无需再打开单个项目卡片。
+          </p>
+        </AppCard>
+      );
+    }
     case "advice":
       return <AdviceListCard issueId={card.issue_id} />;
     case "schedule_preview":
+      if (!Number.isFinite(card.project_id)) return null;
       return (
         <AppCard plain title="排期模拟结果">
           <Space wrap>

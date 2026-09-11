@@ -170,6 +170,13 @@ a {
   border-bottom: 1px solid var(--app-color-border);
 }
 
+.app-header__leading {
+  display: flex;
+  align-items: center;
+  gap: var(--app-spacing-xs);
+  min-width: 0;
+}
+
 .app-header__brand {
   font-size: 15px;
   font-weight: 700;
@@ -207,16 +214,25 @@ a {
   right: 0;
   z-index: 100;
   display: flex;
-  justify-content: space-around;
+  justify-content: flex-start;
+  gap: 2px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--app-color-border);
 }
 
+.app-tabbar::-webkit-scrollbar {
+  display: none;
+}
+
 .app-tabbar__item {
-  flex: 1;
-  min-width: 0;
+  flex: 1 0 auto;
+  min-width: 56px;
+  max-width: 88px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -242,6 +258,55 @@ a {
 .app-tabbar__icon {
   font-size: 20px;
   line-height: 1;
+}
+
+.app-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.app-drawer-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--app-radius-md);
+  color: var(--app-color-text);
+  font-weight: 500;
+}
+
+.app-drawer-nav__link:hover {
+  background: var(--app-color-primary-soft);
+}
+
+.app-drawer-nav__link--active {
+  background: var(--app-color-primary-soft);
+  color: var(--app-color-primary);
+}
+
+.app-drawer-nav__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Keep wide tables/filters inside the viewport; scroll locally, not the page. */
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filter-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filter-scroll .ant-segmented {
+  min-width: max-content;
 }
 
 /* ==========================================================================

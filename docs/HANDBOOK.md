@@ -4,7 +4,9 @@
 **版权**：Copyright 2024–2026 Jack Zhang（`59841153z@gmail.com` / `598411539@qq.com`）  
 **许可**：Apache License 2.0（见仓库根目录 `LICENSE` / `NOTICE`）
 
-本文档为开源发行版**唯一手册**。产品面向多行业通用项目管理，不绑定医药、制造等单一领域。
+本文档为开源发行版的产品与运维主手册。产品面向多行业通用项目管理，不绑定医药、制造等单一领域。
+
+真实网页操作、全功能检测和项目助手专项验收见 [全功能检测指导手册](FULL_FUNCTION_TESTING_GUIDE.md)。
 
 ---
 
@@ -148,6 +150,17 @@ cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 - 模型名来自环境变量 `LLM_MODEL_*`，改 `.env` 后需重启 backend/worker。
 
 Agent Skills 见 `mcp/skills/`。
+
+---
+
+## 7.1 计划变更方案（digest / feasible）
+
+排期预览与变更方案走同一套可行性规则：
+
+- 路径：`POST /api/v1/projects/{id}/planning/schedule-preview` 与 `.../change-proposals`。
+- 仅当候选计划 **`feasible=true`** 时，校验（validate）才会把方案升为 `VALIDATED` 并生成 **64 位 digest**；否则保持 `DRAFT` 且 **无 digest**，无法 confirm/apply。
+- 常见导致不可行：同项目内其它任务缺计划开始/工期、已开始任务缺实际开始或剩余工期等（`MISSING_PLAN_DATA` / `MISSING_ACTUAL_DATA`）。
+- 这是产品规则，不是静默失败：先补齐资料或缩小变更范围，再预览 → 校验 → 确认 → 执行。
 
 ---
 

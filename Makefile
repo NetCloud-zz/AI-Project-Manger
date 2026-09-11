@@ -72,17 +72,19 @@ lint-frontend: ## ESLint + tsc
 	cd $(FRONTEND) && npm run typecheck
 
 .PHONY: test
-test: ## Unit tests (not shipped in open-source tree; add backend/tests locally if needed)
-	@echo "Open-source tree ships without backend/tests. Restore tests locally before running pytest."
-	@exit 1
+test: ## Run backend unit tests (minimal Stage-5 set)
+	cd $(BACKEND) && .venv/bin/pytest
 
 .PHONY: test-integration
-test-integration: ## Integration tests (not shipped)
-	@echo "Open-source tree ships without backend/tests."
-	@exit 1
+test-integration: ## Integration tests (marker); requires live Postgres/Redis
+	cd $(BACKEND) && .venv/bin/pytest -m integration
+
+.PHONY: eval-list
+eval-list: ## Show assistant eval cases (OPT-11 YAML; no live LLM)
+	@sed -n '1,120p' $(BACKEND)/evals/cases.yaml
 
 .PHONY: check
-check: lint ## Lint (tests not included in open-source tree)
+check: lint test ## Lint + unit tests
 
 # ---------------------------------------------------------------- migrations ---
 
@@ -128,6 +130,55 @@ logs: ## Tail logs: make logs s=backend
 .PHONY: build
 build: ## Build all images
 	$(COMPOSE) build
+
+.PHONY: package
+package: ## Build local source release tarball under dist/
+	@mkdir -p dist
+	@rm -f dist/project-agent-0.2.1.tar.gz
+	@STAGE=$$(mktemp -d) && \
+	NAME=project-agent-0.2.1 && \
+	mkdir -p "$$STAGE/$$NAME" && \
+	rsync -a \
+	  --exclude='.git/' \
+	  --exclude='.env' \
+	  --exclude='.env.local' \
+	  --exclude='.env.production' \
+	  --exclude='.secrets/' \
+	  --exclude='secrets/' \
+	  --exclude='node_modules/' \
+	  --exclude='.venv/' \
+	  --exclude='venv/' \
+	  --exclude='frontend/.next/' \
+	  --exclude='**/__pycache__/' \
+	  --exclude='.pytest_cache/' \
+	  --exclude='.ruff_cache/' \
+	  --exclude='.mypy_cache/' \
+	  --exclude='dist/' \
+	  --exclude='uploads/' \
+	  --exclude='logs/' \
+	  --exclude='tmp/' \
+	  --exclude='.cursor/' \
+	  --exclude='agent-transcripts/' \
+	  --exclude='docs/qa/**/screenshots/' \
+	  --exclude='*.dump' \
+	  --exclude='*.sql.gz' \
+	  ./ "$$STAGE/$$NAME/" && \
+	test -f "$$STAGE/$$NAME/.env.example" && \
+	! test -f "$$STAGE/$$NAME/.env" && \
+	! test -d "$$STAGE/$$NAME/.secrets" && \
+	tar -C "$$STAGE" -czf "dist/$$NAME.tar.gz" "$$NAME" && \
+	rm -rf "$$STAGE" && \
+	ls -lh "dist/$$NAME.tar.gz" && \
+	sha256sum "dist/$$NAME.tar.gz" > "dist/$$NAME.tar.gz.sha256" && \
+	cat "dist/$$NAME.tar.gz.sha256"
+
+.PHONY: release-local
+release-local: package build ## Package + rebuild all compose images
+	$(COMPOSE) up -d --force-recreate
+	@sleep 4
+	@$(COMPOSE) ps
+	@curl -fsS http://127.0.0.1:8080/health && echo
+	@curl -sS http://127.0.0.1:8080/health/ready; echo
 
 .PHONY: seed
 seed: ## Seed default users (admin / executive / owner / member)

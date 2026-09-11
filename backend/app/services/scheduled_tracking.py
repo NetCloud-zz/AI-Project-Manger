@@ -11,6 +11,7 @@ from app.notifications import get_notification_provider
 from app.notifications.provider import NotificationProvider, TaskReminderPayload
 from app.repositories.progress_update import ProgressUpdateRepository
 from app.repositories.task import TaskRepository
+from app.workers.idempotency import claim_notification_once
 from app.workers.timezone import day_bounds, scheduler_today
 
 logger = get_logger(__name__)
@@ -28,14 +29,19 @@ class ScheduledTrackingService:
         self.notifier = notifier or get_notification_provider()
 
     def scan_daily_tasks(self, *, today: date | None = None) -> int:
-        """Remind owners to submit progress for active tasks."""
+        """Remind owners to submit progress for active tasks (once per task per day)."""
         today = today or scheduler_today()
         active_tasks = self.tasks.list_active_tasks()
         sent = 0
+        skipped = 0
         for task in active_tasks:
             owner = task.owner
             project = task.project
             if owner is None:
+                continue
+            dedupe = f"TASK_REMINDER:{task.id}:{today.isoformat()}"
+            if not claim_notification_once(dedupe):
+                skipped += 1
                 continue
             self.notifier.send_task_reminder(
                 TaskReminderPayload(
@@ -53,15 +59,17 @@ class ScheduledTrackingService:
             "worker.scan_daily_tasks.completed",
             today=today.isoformat(),
             reminders_sent=sent,
+            reminders_skipped=skipped,
         )
         return sent
 
     def scan_missing_progress(self, *, today: date | None = None) -> int:
-        """Notify owners who have not submitted progress today for active tasks."""
+        """Notify owners who have not submitted progress today (once per task per day)."""
         today = today or scheduler_today()
         start, end = day_bounds(today)
         active_tasks = self.tasks.list_active_tasks()
         sent = 0
+        skipped = 0
         for task in active_tasks:
             owner = task.owner
             project = task.project
@@ -75,6 +83,10 @@ class ScheduledTrackingService:
             )
             if task.id in submitted:
                 continue
+            dedupe = f"MISSING_PROGRESS:{task.id}:{today.isoformat()}"
+            if not claim_notification_once(dedupe):
+                skipped += 1
+                continue
             message = (
                 f"任务「{task.task_name}」今日尚未提交进度更新，"
                 f"所属项目：{project.project_name if project else '未知'}，"
@@ -86,5 +98,6 @@ class ScheduledTrackingService:
             "worker.scan_missing_progress.completed",
             today=today.isoformat(),
             notifications_sent=sent,
+            notifications_skipped=skipped,
         )
         return sent

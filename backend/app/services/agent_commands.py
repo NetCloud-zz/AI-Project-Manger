@@ -13,7 +13,12 @@ from sqlalchemy.orm import Session
 from app.models.agent_command import AgentCommandItem, AgentCommandPlan
 from app.models.agent_request import AgentRequest
 from app.models.user import User
-from app.schemas.agent_command import CommandPlanInput, CommandRetryInput, validate_coverage
+from app.schemas.agent_command import (
+    CommandPlanInput,
+    CommandRetryInput,
+    requires_atomic,
+    validate_coverage,
+)
 from app.services.exceptions import DomainValidationError
 
 ATOMIC_TOOLS = frozenset(
@@ -84,12 +89,14 @@ class CommandService:
         from app.agents.management_tools import MANAGEMENT_TOOLS, WRITE_TOOLS
 
         spans = validate_coverage(proposal, source)
+        # Product default: best-effort independent writes unless user asks all-or-nothing.
+        policy = "atomic" if requires_atomic(source) else "independent"
         known = {t.name for t in MANAGEMENT_TOOLS}
         for item in proposal.items:
             if item.tool not in known:
                 raise DomainValidationError(f"未知工具：{item.tool}")
             if (
-                proposal.policy == "atomic"
+                policy == "atomic"
                 and item.tool in WRITE_TOOLS
                 and item.tool not in ATOMIC_TOOLS
             ):
@@ -99,7 +106,7 @@ class CommandService:
         plan = AgentCommandPlan(
             request_id=request_id,
             source=source,
-            policy=proposal.policy,
+            policy=policy,
             expected_count=proposal.expected_count,
             status="READY",
         )

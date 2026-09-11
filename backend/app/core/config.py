@@ -12,13 +12,25 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Environment = Literal["local", "dev", "staging", "prod"]
 LogFormat = Literal["console", "json"]
+
+# Known placeholders that must never be used as a real signing key.
+INSECURE_JWT_SECRETS = frozenset(
+    {
+        "change-me-in-production",
+        "changeme",
+        "change-me",
+        "secret",
+        "jwt-secret",
+        "your-secret-here",
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -31,10 +43,12 @@ class Settings(BaseSettings):
 
     # --- Application ---
     APP_NAME: str = "project-agent"
-    APP_VERSION: str = "0.2.0"
+    APP_VERSION: str = "0.2.1"
     ENVIRONMENT: Environment = "local"
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
+    # None = auto (enabled only when ENVIRONMENT=local). Explicit true/false wins.
+    OPENAPI_ENABLED: bool | None = None
 
     # --- Logging ---
     LOG_LEVEL: str = "INFO"
@@ -56,6 +70,9 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str | None = None
     CELERY_RESULT_BACKEND: str | None = None
     SCHEDULER_TIMEZONE: str = "Asia/Shanghai"
+    # Calendar-day logic (due dates, overdue, “today”) uses this timezone.
+    # Falls back to SCHEDULER_TIMEZONE when unset.
+    BUSINESS_TZ: str | None = None
     DAILY_TASK_SCAN_HOUR: int = 9
     MISSING_PROGRESS_SCAN_HOUR: int = 15
     DAILY_SUMMARY_HOUR: int = 18
@@ -69,9 +86,18 @@ class Settings(BaseSettings):
     NOTIFICATION_RETRY_BACKOFF_SECONDS: int = Field(default=60, ge=5, le=3600)
 
     # --- Auth ---
+    # Default is intentionally insecure so misconfigured deploys fail the
+    # model_validator below instead of silently shipping a forgeable key.
     JWT_SECRET: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 12
+    # Local-only escape hatch for throwaway sandboxes. Never set in shared/prod.
+    ALLOW_INSECURE_JWT: bool = False
+    # Login brute-force throttle (IP + username). 0 disables.
+    LOGIN_RATE_LIMIT_ATTEMPTS: int = Field(default=10, ge=0, le=1000)
+    LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=300, ge=30, le=86400)
+    # Allow seed script to use documented demo passwords (local only).
+    ALLOW_PUBLIC_SEED_PASSWORDS: bool = False
 
     # --- CORS ---
     # NoDecode keeps pydantic-settings from JSON-parsing the raw value so the
@@ -150,6 +176,20 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return value
 
+    @model_validator(mode="after")
+    def _reject_insecure_jwt_secret(self) -> Self:
+        secret = (self.JWT_SECRET or "").strip()
+        insecure = secret in INSECURE_JWT_SECRETS or len(secret) < 32
+        if not insecure:
+            return self
+        if self.ENVIRONMENT == "local" and self.ALLOW_INSECURE_JWT:
+            return self
+        raise ValueError(
+            "JWT_SECRET is missing, shorter than 32 characters, or a known "
+            "insecure default. Generate one with `openssl rand -hex 32`. "
+            "Local sandboxes only: set ALLOW_INSECURE_JWT=true."
+        )
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def celery_broker(self) -> str:
@@ -221,6 +261,14 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "prod"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def openapi_enabled(self) -> bool:
+        """Swagger/OpenAPI are local-dev aids; keep them off on shared stacks."""
+        if self.OPENAPI_ENABLED is not None:
+            return self.OPENAPI_ENABLED
+        return self.ENVIRONMENT == "local"
 
 
 @lru_cache

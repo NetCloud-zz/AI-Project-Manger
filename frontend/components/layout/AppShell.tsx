@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { App, Button, Tooltip } from "antd";
-import { LogoutOutlined } from "@ant-design/icons";
+import { App, Button, Drawer, Tooltip } from "antd";
+import { LogoutOutlined, MenuOutlined } from "@ant-design/icons";
 
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useViewport } from "@/hooks/useViewport";
@@ -14,11 +15,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const viewport = useViewport();
+  const [moreOpen, setMoreOpen] = useState(false);
   const isLogin = pathname === "/login";
   const isAuthCallback = pathname.startsWith("/auth/");
   const showChrome = Boolean(user) && !isLogin && !isAuthCallback;
   /* 768–1024px collapses the sidebar to icons, so labels move into tooltips. */
   const isRail = viewport === "tablet";
+  const isMobile = viewport === "mobile";
 
   const navItems = getNavItems(user);
   const initials = user?.name?.slice(0, 1) ?? "?";
@@ -88,7 +91,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="app-shell__body">
           <header className="app-header">
-            <div className="app-header__brand">{APP_NAME}</div>
+            <div className="app-header__leading">
+              {isMobile ? (
+                <Button
+                  type="text"
+                  icon={<MenuOutlined />}
+                  aria-label="打开导航菜单"
+                  onClick={() => setMoreOpen(true)}
+                />
+              ) : null}
+              <div className="app-header__brand">{APP_NAME}</div>
+            </div>
             <div className="app-header__user">
               <div className="app-avatar" aria-hidden>
                 {initials}
@@ -124,6 +137,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+
+        <Drawer
+          title="导航"
+          placement="left"
+          open={moreOpen}
+          onClose={() => setMoreOpen(false)}
+          width={280}
+        >
+          <nav className="app-drawer-nav" aria-label="全部导航">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = isNavActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`app-drawer-nav__link${active ? " app-drawer-nav__link--active" : ""}`}
+                  onClick={() => setMoreOpen(false)}
+                >
+                  <span className="app-drawer-nav__icon">
+                    <Icon />
+                  </span>
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          <Button
+            block
+            icon={<LogoutOutlined />}
+            onClick={() => {
+              setMoreOpen(false);
+              logout();
+            }}
+            style={{ marginTop: 16 }}
+          >
+            退出登录
+          </Button>
+        </Drawer>
       </div>
     </App>
   );

@@ -33,6 +33,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { usePagedList } from "@/hooks/usePagedList";
+import { useViewport } from "@/hooks/useViewport";
 import { ApiError } from "@/lib/http";
 import {
   ROLE_LABELS,
@@ -84,6 +85,8 @@ function errorMessage(error: unknown, fallback: string): string {
 function UsersPageInner() {
   const { message, modal } = App.useApp();
   const { user: me } = useAuth();
+  const viewport = useViewport();
+  const isCompact = viewport === "mobile" || viewport === "tablet";
   const isAdmin = me?.role === "ADMIN";
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(isAdmin);
@@ -286,6 +289,7 @@ function UsersPageInner() {
         title: "来源",
         key: "source",
         width: 100,
+        responsive: ["lg"],
         render: (_, record) =>
           record.oa_admin_id != null ? (
             <Tag color="blue">OA #{record.oa_admin_id}</Tag>
@@ -316,6 +320,7 @@ function UsersPageInner() {
         dataIndex: "department",
         key: "department",
         width: 120,
+        responsive: ["md"],
         render: (value: string | null) => value || "—",
       },
       {
@@ -324,6 +329,7 @@ function UsersPageInner() {
         key: "email",
         width: 180,
         ellipsis: true,
+        responsive: ["lg"],
         render: (value: string | null) => value || "—",
       },
       {
@@ -331,26 +337,29 @@ function UsersPageInner() {
         dataIndex: "mobile",
         key: "mobile",
         width: 120,
+        responsive: ["lg"],
         render: (value: string | null) => value || "—",
       },
       {
         title: "操作",
         key: "actions",
         fixed: "right",
-        width: 260,
+        width: isCompact ? 120 : 260,
         render: (_, record) => (
           <Space size={4} wrap>
             <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
               编辑
             </Button>
-            <Button
-              type="link"
-              size="small"
-              icon={<KeyOutlined />}
-              onClick={() => openPassword(record)}
-            >
-              改密
-            </Button>
+            {!isCompact ? (
+              <Button
+                type="link"
+                size="small"
+                icon={<KeyOutlined />}
+                onClick={() => openPassword(record)}
+              >
+                改密
+              </Button>
+            ) : null}
             {record.status === "ACTIVE" ? (
               <Button
                 type="link"
@@ -372,6 +381,16 @@ function UsersPageInner() {
                 启用
               </Button>
             )}
+            {isCompact ? (
+              <Button
+                type="link"
+                size="small"
+                icon={<KeyOutlined />}
+                onClick={() => openPassword(record)}
+              >
+                改密
+              </Button>
+            ) : null}
           </Space>
         ),
       },
@@ -438,14 +457,14 @@ function UsersPageInner() {
             <EmptyState title="无匹配用户" description="试试调整搜索或筛选条件。" />
           ) : (
             <>
-              <div className="app-card app-card--plain">
+              <div className="app-card app-card--plain table-scroll">
                 <Table<ManagedUser>
                   rowKey="id"
                   size="middle"
                   columns={columns}
                   dataSource={list.paged}
                   pagination={false}
-                  scroll={{ x: 1100 }}
+                  scroll={{ x: isCompact ? 720 : 1100 }}
                 />
               </div>
               <AppPagination
