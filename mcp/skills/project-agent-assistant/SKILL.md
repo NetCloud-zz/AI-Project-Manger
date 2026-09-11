@@ -24,12 +24,15 @@ description: >-
 
 - Read from env: `LLM_MODEL_REASONING` (chat), `LLM_MODEL_FAST` (summaries / progress).
 - Empty `LLM_API_KEY` → stub; do not fake success.
+- Assistant ReAct runtime: `AGENT_RUNTIME=agentscope` (default) uses AgentScope 2.x `Agent` + `Toolkit`; `legacy` keeps the in-house tool loop. Command planning, stub fallback, SSE and RBAC tools are unchanged.
+- Reasoning vs correction: `AGENT_REASONING_ROUNDS` (default 20) and `AGENT_TOOL_CORRECTION_ROUNDS` (default 10). Prefer `query_entities`, `batch_find_users`, `draft_project_plan` / `batch_create_tasks` over per-row tools. Agent never emits SQL.
 
 ## Tool calling
 
 - Tools execute as the **current user**; reuse page/API permissions.
 - Strip secrets from tool payloads; prefer lean DTOs.
 - Mutations that move other tasks' dates need preview/confirm flows — do not silent-write.
+- Never add `execute_sql` or let the model submit SQL. Prefer `query_entities` and batch tools; writes use one transaction plus `operation_id` / `client_item_id` idempotency and a post-write `verification` payload.
 
 ## Frontend cues
 

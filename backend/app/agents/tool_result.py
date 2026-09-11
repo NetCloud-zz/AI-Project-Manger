@@ -30,6 +30,11 @@ class ToolErrorCode(StrEnum):
     INVALID_STATE = "INVALID_STATE"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     DESTRUCTIVE_BLOCKED = "DESTRUCTIVE_BLOCKED"
+    OWNER_NOT_FOUND = "OWNER_NOT_FOUND"
+    DUPLICATE_TASK = "DUPLICATE_TASK"
+    VALIDATION_FAILED = "VALIDATION_FAILED"
+    PARTIAL_SUCCESS = "PARTIAL_SUCCESS"
+    CORRECTION_BUDGET_EXCEEDED = "CORRECTION_BUDGET_EXCEEDED"
 
 
 _RETRYABLE = frozenset(
@@ -64,6 +69,11 @@ _LEGACY_CODE_ALIASES: dict[str, ToolErrorCode] = {
     "invalid_state": ToolErrorCode.INVALID_STATE,
     "validation_error": ToolErrorCode.VALIDATION_ERROR,
     "destructive_blocked": ToolErrorCode.DESTRUCTIVE_BLOCKED,
+    "owner_not_found": ToolErrorCode.OWNER_NOT_FOUND,
+    "duplicate_task": ToolErrorCode.DUPLICATE_TASK,
+    "validation_failed": ToolErrorCode.VALIDATION_FAILED,
+    "partial_success": ToolErrorCode.PARTIAL_SUCCESS,
+    "correction_budget_exceeded": ToolErrorCode.CORRECTION_BUDGET_EXCEEDED,
 }
 
 

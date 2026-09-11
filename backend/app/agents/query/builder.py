@@ -143,6 +143,12 @@ def apply_query(
 
     total = len(matched)
     page = matched[request.offset : request.offset + request.limit]
+    if request.fields:
+        allowed = [name for name in request.fields if name in fields]
+        page = [
+            {name: _resolve_attr(row, fields[name]) for name in allowed}
+            for row in page
+        ]
     return {
         "items": page,
         "total": total,

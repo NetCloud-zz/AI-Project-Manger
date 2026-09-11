@@ -168,7 +168,7 @@ export function TaskBranchesPanel({ task, canManage, onChanged }: Props) {
                 <TaskStatusTag status={branch.status} />
               </div>
               <p className="meta-line">
-                负责人：{branch.owner?.name ?? branch.owner_id}
+                负责人：{branch.owner?.name ?? (branch.owner_id == null ? "待定" : branch.owner_id)}
                 {branch.due_date ? ` · 截止 ${branch.due_date}` : ""}
               </p>
               {canManage && !branch.is_active_branch ? (

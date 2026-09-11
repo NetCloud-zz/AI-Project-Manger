@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 MAX_QUERY_LIMIT = 200
 DEFAULT_QUERY_LIMIT = 50
@@ -28,8 +28,15 @@ FilterOp = Literal[
 
 class QueryFilter(BaseModel):
     field: str
-    op: FilterOp
+    op: FilterOp = "eq"
     value: Any = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def alias_operator(cls, value: Any) -> Any:
+        if isinstance(value, dict) and value.get("op") is None and value.get("operator") is not None:
+            return {**value, "op": value["operator"]}
+        return value
 
 
 class QuerySort(BaseModel):
@@ -48,8 +55,16 @@ class AgentQueryRequest(BaseModel):
     sort: list[QuerySort] = Field(default_factory=list)
     group_by: list[str] = Field(default_factory=list)
     aggregates: list[QueryAggregate] = Field(default_factory=list)
+    fields: list[str] = Field(default_factory=list)
     limit: int = DEFAULT_QUERY_LIMIT
     offset: int = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def alias_order_by(cls, value: Any) -> Any:
+        if isinstance(value, dict) and not value.get("sort") and value.get("order_by"):
+            return {**value, "sort": value["order_by"]}
+        return value
 
     @field_validator("limit")
     @classmethod

@@ -35,6 +35,7 @@ from app.repositories.agent_conversation import (
     touch_conversation,
 )
 from app.schemas.agent import ConversationCreate, ConversationUpdate, MessageCreate
+from app.services.agent_commands import command_error_code
 from app.services.agent_idempotency import (
     begin_request,
     mark_request_finished,
@@ -337,11 +338,17 @@ class ConversationService:
                 else None
             )
             assistant.cards = list(result.cards) or None
+            command_error = command_error_code(assistant.cards)
+            if command_error:
+                assistant.status = MessageStatus.FAILED
             if result.llm_used:
                 assistant.model = settings.LLM_MODEL_REASONING
             tools_used = list(result.tools_used)
             llm_used = result.llm_used
-            agent_request.status = AgentRequestStatus.COMPLETED
+            agent_request.status = (
+                AgentRequestStatus.FAILED if command_error else AgentRequestStatus.COMPLETED
+            )
+            agent_request.error_code = command_error
             agent_request.completed_at = datetime.now(UTC)
         except Exception as exc:  # noqa: BLE001 — persist failure state for the UI
             assistant.content = "项目助手暂时无法完成回答，请稍后重试。"
@@ -765,7 +772,14 @@ class ConversationService:
                     tool_results.append(record)
                 elif event.event == "card":
                     if event.data.get("type") == "execution_plan":
-                        cards = [card for card in cards if not (card.get("type") == "execution_plan" and card.get("request_id") == event.data.get("request_id"))]
+                        cards = [
+                            card
+                            for card in cards
+                            if not (
+                                card.get("type") == "execution_plan"
+                                and card.get("request_id") == event.data.get("request_id")
+                            )
+                        ]
                     cards.append(dict(event.data))
                 yield event
         except GeneratorExit:
@@ -861,7 +875,8 @@ class ConversationService:
             return
 
         assistant.content = "".join(content_parts)
-        assistant.status = MessageStatus.COMPLETED
+        command_error = command_error_code(cards)
+        assistant.status = MessageStatus.FAILED if command_error else MessageStatus.COMPLETED
         assistant.completed_at = datetime.now(UTC)
         assistant.tool_calls = (
             [{"name": name} for name in dict.fromkeys(tools_used)] if tools_used else None
@@ -877,7 +892,8 @@ class ConversationService:
             mark_request_finished(
                 self.db,
                 agent_request,
-                status=AgentRequestStatus.COMPLETED,
+                status=AgentRequestStatus.FAILED if command_error else AgentRequestStatus.COMPLETED,
+                error_code=command_error,
                 user_message_id=user_message.id,
                 assistant_message_id=assistant.id,
             )
@@ -887,6 +903,7 @@ class ConversationService:
         yield AgentStreamEvent(
             event="done",
             data={
+                "status": assistant.status.value,
                 "message_id": assistant.id,
                 "conversation_id": conversation.id,
                 "tools_used": list(dict.fromkeys(tools_used)),
@@ -900,7 +917,10 @@ class ConversationService:
 
     def _is_cancel_requested(self, request_id: int) -> bool:
         row = self.db.get(AgentRequest, request_id)
-        return bool(row and row.cancel_requested)
+        if row is None:
+            return False
+        self.db.refresh(row)
+        return bool(row.cancel_requested)
 
     def _touch_request_heartbeat(self, request_id: int) -> None:
         row = self.db.get(AgentRequest, request_id)
@@ -926,6 +946,16 @@ class ConversationService:
         request_status: AgentRequestStatus,
     ) -> None:
         settings = get_settings()
+        self.db.refresh(assistant)
+        if assistant.status != MessageStatus.STREAMING:
+            # Another session already force-finalized (stop / disconnect).
+            return
+        cleaned = (content or "").strip()
+        if message_status in {MessageStatus.STOPPED, MessageStatus.INTERRUPTED} and cleaned in {
+            "没有查到相关数据。",
+            "没有查到相关数据",
+        }:
+            content = "（已停止）" if message_status == MessageStatus.STOPPED else "（已中断）"
         assistant.content = content
         assistant.status = message_status
         assistant.completed_at = datetime.now(UTC)
@@ -1057,17 +1087,13 @@ class ConversationService:
     ) -> tuple[AgentRequest | None, AgentMessage | None]:
         """Return the in-flight request/message, reclaiming orphans if needed."""
         self._owned(conversation_id, actor)
-        self.reclaim_stale_generations(
-            conversation_id, stale_after_seconds=stale_after_seconds
-        )
+        self.reclaim_stale_generations(conversation_id, stale_after_seconds=stale_after_seconds)
         request = self.db.scalar(
             select(AgentRequest)
             .where(
                 AgentRequest.conversation_id == conversation_id,
                 AgentRequest.user_id == actor.id,
-                AgentRequest.status.in_(
-                    (AgentRequestStatus.ACCEPTED, AgentRequestStatus.RUNNING)
-                ),
+                AgentRequest.status.in_((AgentRequestStatus.ACCEPTED, AgentRequestStatus.RUNNING)),
             )
             .order_by(AgentRequest.id.desc())
             .limit(1)
@@ -1120,9 +1146,7 @@ class ConversationService:
         )
         for request in stale_requests:
             if request.assistant_message_id is not None:
-                self.finalize_streaming_message(
-                    request.assistant_message_id, interrupted=True
-                )
+                self.finalize_streaming_message(request.assistant_message_id, interrupted=True)
             else:
                 mark_request_finished(
                     self.db,

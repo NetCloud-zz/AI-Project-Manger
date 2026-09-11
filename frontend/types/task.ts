@@ -36,7 +36,7 @@ export interface Task extends TaskPlanningFields {
   task_name: string;
   /** Work stream / phase used to group rows in the Gantt view. */
   work_stream: string | null;
-  owner_id: number;
+  owner_id: number | null;
   start_date: string | null;
   due_date: string | null;
   progress_percent: number | null;
@@ -57,7 +57,7 @@ export interface Task extends TaskPlanningFields {
 export interface TaskCreateInput extends TaskPlanningFields {
   task_name: string;
   work_stream?: string | null;
-  owner_id: number;
+  owner_id?: number | null;
   start_date?: string | null;
   due_date?: string | null;
   progress_percent?: number | null;
@@ -67,7 +67,7 @@ export interface TaskCreateInput extends TaskPlanningFields {
 export interface TaskUpdateInput extends TaskPlanningFields {
   task_name?: string;
   work_stream?: string | null;
-  owner_id?: number;
+  owner_id?: number | null;
   start_date?: string | null;
   due_date?: string | null;
   progress_percent?: number | null;

@@ -22,6 +22,7 @@ class DraftTask(PlanningInput):
     client_id: int = Field(le=-1)
     task_name: str = Field(min_length=1, max_length=300)
     owner_id: int | None = None
+    owner_name: str | None = Field(default=None, max_length=100)
     work_stream: str | None = Field(default=None, max_length=120)
     description: str | None = Field(default=None, max_length=10000)
     deliverable: str | None = Field(default=None, max_length=5000)
@@ -55,6 +56,7 @@ class DraftProject(PlanningInput):
     project_name: str = Field(min_length=1, max_length=200)
     goal: str | None = Field(default=None, max_length=5000)
     owner_id: int | None = None
+    owner_name: str | None = Field(default=None, max_length=100)
     owner_ids: list[int] | None = Field(default=None, min_length=1, max_length=20)
     start_date: date | None = None
     target_date: date | None = None

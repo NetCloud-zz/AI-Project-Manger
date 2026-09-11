@@ -229,7 +229,7 @@ function TaskDetailInner() {
       <div className="task-detail-layout">
         <div className="task-detail-layout__sidebar">
           <AppCard stack="sm">
-            <div className="meta-line">负责人 · {task.owner?.name ?? task.owner_id}</div>
+            <div className="meta-line">负责人 · {task.owner?.name ?? (task.owner_id == null ? "待定" : task.owner_id)}</div>
             {task.branch_label ? (
               <div className="meta-line">
                 分支 · {task.branch_label}

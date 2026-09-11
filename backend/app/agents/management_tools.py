@@ -36,14 +36,20 @@ from app.services.schedule_guard import ScheduleImpactRequiresProposal
 _PROJECT_CODE_RE = re.compile(r"\b([A-Za-z]+-\d+)\b")
 
 _OWNER_PROPS = {
-    "owner_id": {"type": "integer", "description": "User id of the owner/assignee"},
+    "owner_id": {
+        "type": ["integer", "null"],
+        "description": "User id of the owner/assignee; null leaves the task unassigned",
+    },
     "owner_username": {
         "type": "string",
         "description": "Login username of the owner/assignee",
     },
     "owner_name": {
         "type": "string",
-        "description": "Display name of the owner/assignee (use find_users if ambiguous)",
+        "description": (
+            "Display name of the owner/assignee (use find_users if ambiguous). "
+            "Pass 待定/TBD/未指定 to leave unassigned."
+        ),
     },
 }
 
@@ -51,8 +57,9 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
     ToolDefinition(
         name="get_current_user",
         description=(
-            "Return the authenticated actor (id, name, username, role) and business timezone. "
-            "Use this for “我 / 我的任务”; never invent identity via find_users."
+            "Return the authenticated actor (id / user_id, name, username, role) and business timezone. "
+            "Use this for “我 / 我的任务”; never invent identity via find_users. "
+            "Both id and user_id are the same numeric user primary key."
         ),
         parameters={"type": "object", "properties": {}, "required": []},
     ),
@@ -282,8 +289,8 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
     ToolDefinition(
         name="find_users",
         description=(
-            "Search active users by name/username/email before assigning owners. "
-            "Prefer this when the user refers to a person by display name."
+            "Search one person by a partial name/username/email. For a list of exact "
+            "display names prefer batch_find_users."
         ),
         parameters={
             "type": "object",
@@ -292,8 +299,128 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
                     "type": "string",
                     "description": "Partial name, username, or email",
                 },
+                "names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Exact display names; when set, runs one batch resolve",
+                },
                 "limit": {"type": "integer", "description": "Max results (default 20)"},
             },
+        },
+    ),
+    ToolDefinition(
+        name="batch_find_users",
+        description=(
+            "Resolve many exact display names in one call. Returns resolved / ambiguous "
+            "/ not_found. resolved is an array of {input, name, id, user_id, username, department}; "
+            "id and user_id are the same. ambiguous contains {input, candidates}; not_found "
+            "contains names. Prefer $ref like owners.<姓名>.user_id (or .id). Unresolved names "
+            "are omitted from resolved, so its indices are not input indices. "
+            "Do not call find_users once per person."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": 200,
+                }
+            },
+            "required": ["names"],
+        },
+    ),
+    ToolDefinition(
+        name="query_entities",
+        description=(
+            "Controlled Query DSL over a registered entity (task, project, issue, "
+            "user, milestone, project_member). Whitelist fields/operators only. "
+            "Never invent SQL or table names."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "entity": {
+                    "type": "string",
+                    "enum": ["task", "project", "issue", "user", "milestone", "project_member"],
+                },
+                "filters": {"type": "array", "items": {"type": "object"}},
+                "fields": {"type": "array", "items": {"type": "string"}},
+                "order_by": {"type": "array", "items": {"type": "object"}},
+                "sort": {"type": "array", "items": {"type": "object"}},
+                "group_by": {"type": "array", "items": {"type": "string"}},
+                "aggregates": {"type": "array", "items": {"type": "object"}},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                "offset": {"type": "integer", "minimum": 0},
+            },
+            "required": ["entity"],
+        },
+    ),
+    ToolDefinition(
+        name="batch_create_tasks",
+        description=(
+            "Create many tasks in one transaction. Validate all owners first; any "
+            "invalid item rolls back the batch. Pass operation_id + client_item_id "
+            "for idempotent retry of FAILED/PENDING items only."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "operation_id": {"type": "string"},
+                "project_id": {"type": "integer"},
+                "project_code": {"type": "string"},
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "client_item_id": {"type": "string"},
+                            "task_name": {"type": "string"},
+                            "owner_name": {"type": "string"},
+                            "owner_id": {"type": "integer"},
+                            "work_stream": {"type": "string"},
+                            "start_date": {"type": "string"},
+                            "due_date": {"type": "string"},
+                        },
+                        "required": ["client_item_id", "task_name"],
+                    },
+                },
+            },
+            "required": ["items"],
+        },
+    ),
+    ToolDefinition(
+        name="batch_update_tasks",
+        description=(
+            "Update many tasks in one transaction. Retry only FAILED/PENDING items "
+            "using the same operation_id and client_item_id."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "operation_id": {"type": "string"},
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "client_item_id": {"type": "string"},
+                            "task_id": {"type": "integer"},
+                            "task_name": {"type": "string"},
+                            "owner_name": {"type": "string"},
+                            "owner_id": {"type": "integer"},
+                            "work_stream": {"type": "string"},
+                        },
+                        "required": ["client_item_id", "task_id"],
+                    },
+                },
+            },
+            "required": ["items"],
         },
     ),
     ToolDefinition(
@@ -387,11 +514,11 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
     ToolDefinition(
         name="create_task",
         description=(
-            "Create/assign a Level-3 execution task under a project. Requires task_name, "
-            "an owner, and project_id or project_code. start_date / due_date are optional "
-            "(may be filled later). Use work_stream for the Level-2 phase name "
-            "(e.g. 设计/开发) — phases themselves are not separate tasks and need no "
-            "owner or dates."
+            "Create/assign a Level-3 execution task under a project. Requires task_name "
+            "and project_id or project_code. Owner and start_date / due_date are optional "
+            "(may be filled later; omit owner or pass a TBD label to leave unassigned). "
+            "Use work_stream for the Level-2 phase name (e.g. 设计/开发) — phases themselves "
+            "are not separate tasks and need no owner or dates."
         ),
         parameters={
             "type": "object",
@@ -769,6 +896,7 @@ _DRAFT_PLAN = {
                 "project_name": {"type": "string"},
                 "goal": {"type": "string"},
                 "owner_id": {"type": "integer"},
+                "owner_name": {"type": "string"},
                 "owner_ids": {"type": "array", "items": {"type": "integer"}},
                 "start_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
                 "target_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
@@ -788,6 +916,7 @@ _DRAFT_PLAN = {
                     },
                     "task_name": {"type": "string"},
                     "owner_id": {"type": ["integer", "null"]},
+                    "owner_name": {"type": ["string", "null"]},
                     "work_stream": {"type": ["string", "null"]},
                     "description": {"type": ["string", "null"]},
                     "deliverable": {"type": ["string", "null"]},
@@ -937,6 +1066,38 @@ MANAGEMENT_TOOLS.extend(
             parameters={"type": "object", "properties": {"draft_id": {"type": "string"}}},
         ),
         ToolDefinition(
+            name="validate_project_plan",
+            description=(
+                "Re-check a draft (owners, dates, duplicates, open questions) and return "
+                "whether it is publishable. Does not create the real project."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "draft_id": {"type": "string"},
+                    "expected_revision": {"type": "integer", "minimum": 1},
+                },
+                "required": ["draft_id"],
+            },
+        ),
+        ToolDefinition(
+            name="apply_project_plan",
+            description=(
+                "Publish a reviewed draft in one transaction after the user explicitly "
+                "confirms. Requires digest from validate/review. Never invent confirmation."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "draft_id": {"type": "string"},
+                    "digest": {"type": "string", "minLength": 64, "maxLength": 64},
+                    "expected_revision": {"type": "integer", "minimum": 1},
+                    "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 100},
+                },
+                "required": ["draft_id", "digest"],
+            },
+        ),
+        ToolDefinition(
             name="preview_change",
             description=(
                 "Read-only schedule simulation: what happens to dependent tasks and the "
@@ -999,7 +1160,7 @@ MANAGEMENT_TOOLS.extend(
                                     "type": "object",
                                     "properties": {
                                         "task_name": {"type": "string"},
-                                        "owner_id": {"type": "integer"},
+                                        "owner_id": {"type": ["integer", "null"]},
                                         "due_date": {"type": ["string", "null"]},
                                         "start_date": {"type": ["string", "null"]},
                                         "work_stream": {"type": ["string", "null"]},
@@ -1010,7 +1171,7 @@ MANAGEMENT_TOOLS.extend(
                                             "minimum": 1,
                                         },
                                     },
-                                    "required": ["task_name", "owner_id"],
+                                    "required": ["task_name"],
                                 },
                             },
                             "required": ["client_id", "task"],
@@ -1209,6 +1370,8 @@ _PLANNING_TOOLS = frozenset(
         "update_project_plan_draft",
         "review_project_plan_draft",
         "get_project_plan_draft",
+        "validate_project_plan",
+        "apply_project_plan",
         "preview_change",
         "propose_change",
         "get_change_proposal",
@@ -1238,8 +1401,11 @@ WRITE_TOOLS = frozenset(
         "update_issue",
         "create_action_item",
         "update_action_item",
+        "batch_create_tasks",
+        "batch_update_tasks",
         "draft_project_plan",
         "update_project_plan_draft",
+        "apply_project_plan",
         "propose_change",
         "execute_change_plan",
         "submit_progress",
@@ -1392,9 +1558,20 @@ class ManagementToolExecutor:
             if isinstance(result, dict) and isinstance(result.get("card"), dict):
                 self._remember(result["card"])
             lean = sanitize_agent_data(name, result)
-            envelope = ToolResult.success(
-                lean, tool_call_id=tool_call_id, operation_id=operation_id
-            )
+            if isinstance(result, dict) and result.get("ok") is False:
+                envelope = ToolResult.failure(
+                    result.get("error_code") or ToolErrorCode.VALIDATION_FAILED,
+                    str(result.get("message") or "批量操作未完成"),
+                    tool_call_id=tool_call_id,
+                    operation_id=operation_id or result.get("operation_id"),
+                    data=lean,
+                )
+            else:
+                envelope = ToolResult.success(
+                    lean,
+                    tool_call_id=tool_call_id,
+                    operation_id=operation_id or (result.get("operation_id") if isinstance(result, dict) else None),
+                )
         except EntityResolutionError as exc:
             envelope = ToolResult.failure(
                 exc.code,
@@ -1654,11 +1831,26 @@ class ManagementToolExecutor:
             )
         if name == "get_management_attention_items":
             return self._query.get_management_attention_items(actor)
+        if name == "query_entities":
+            return self._query.query_entities(actor, args)
         if name == "find_users":
+            names = args.get("names")
+            if names:
+                return self._write.find_users(names=list(names))
             return self._write.find_users(
                 query=args.get("query"),
                 limit=int(args["limit"]) if args.get("limit") is not None else 20,
             )
+        if name == "batch_find_users":
+            return self._write.find_users(names=list(args.get("names") or []))
+        if name == "batch_create_tasks":
+            from app.services.agent_batch import AgentBatchService
+
+            return AgentBatchService(self._db).batch_create_tasks(actor, args)
+        if name == "batch_update_tasks":
+            from app.services.agent_batch import AgentBatchService
+
+            return AgentBatchService(self._db).batch_update_tasks(actor, args)
         if name == "create_project":
             return self._write.create_project(actor, args)
         if name == "update_project":
@@ -1932,7 +2124,7 @@ def _format_task_progress(task: dict[str, Any]) -> str:
     progress_text = f"最新进展：{latest}。" if latest else ""
     return (
         f"任务 {task.get('task_name')}（{task.get('project_code')}）"
-        f" 负责人 {task.get('owner_name')}，截止 {task.get('due_date') or '未定'}，"
+        f" 负责人 {task.get('owner_name') or '待定'}，截止 {task.get('due_date') or '未定'}，"
         f"状态 {task.get('status')}，AI 状态 {task.get('ai_status')}。"
         f"{progress_text}{issue_text}"
     )

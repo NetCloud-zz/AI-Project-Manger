@@ -28,6 +28,7 @@ class AgentCommandPlan(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(24), default="PLANNING", nullable=False)
     expected_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
+    planning_details: Mapped[dict[str, Any] | None] = mapped_column(_JSON)
     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     lease_token: Mapped[str | None] = mapped_column(String(64))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

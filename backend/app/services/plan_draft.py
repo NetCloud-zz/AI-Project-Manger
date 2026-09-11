@@ -198,7 +198,7 @@ class PlanDraftService:
         for task in content.tasks:
             label = task.task_name
             if task.owner_id is None:
-                blocking.append(f"任务「{label}」缺少负责人")
+                warnings.append(f"任务「{label}」负责人待定，发布后可再指派")
             if task.due_date is None and task.start_date is None:
                 warnings.append(f"任务「{label}」未设起止日期，发布后可再补齐")
             if task.start_date and task.due_date and task.start_date > task.due_date:
@@ -312,7 +312,6 @@ class PlanDraftService:
         task_map: dict[int, int] = {}
         tasks = TaskService(self.db)
         for draft_task in content.tasks:
-            assert draft_task.owner_id is not None
             created_task = tasks.create_task(
                 project.id,
                 TaskCreate(

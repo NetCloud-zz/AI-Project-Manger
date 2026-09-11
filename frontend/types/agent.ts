@@ -35,8 +35,25 @@ export interface CommandPlan {
   revision: number;
   expected_count: number;
   succeeded: number;
+  /** Write-tool successes only; query steps are excluded. */
+  business_succeeded?: number;
   remaining: number;
-  items: Array<{ item_id: string; source_text: string; state: string; depends_on: string[]; result: { error?: { message: string } | null } | null }>;
+  error?: string | null;
+  error_code?: string | null;
+  source?: string | null;
+  unplanned?: boolean;
+  business_item_count?: number;
+  planned_step_count?: number;
+  questions?: string[];
+  requirements?: Array<{ requirement_id: string; text: string }>;
+  items: Array<{
+    item_id: string;
+    tool?: string;
+    source_text: string;
+    state: string;
+    depends_on: string[];
+    result: { error?: { message: string } | null } | null;
+  }>;
 }
 
 export interface AgentConversation {

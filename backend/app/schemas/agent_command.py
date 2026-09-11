@@ -21,13 +21,20 @@ class CommandItemInput(BaseModel):
 class CommandPlanInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     policy: Literal["independent", "atomic"] = "independent"
-    expected_count: int = Field(ge=1, le=100)
+    # Legacy model-generated counts are accepted but never trusted as an oracle.
+    expected_count: int | None = Field(default=None, ge=0)
     items: list[CommandItemInput] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="before")
+    @classmethod
+    def ignore_legacy_count(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "expected_count" in value:
+            return {**value, "expected_count": None}
+        return value
 
     @model_validator(mode="after")
     def graph_valid(self) -> CommandPlanInput:
-        if self.expected_count != len(self.items):
-            raise ValueError("expected_count 必须等于完整步骤清单数量")
+        self.expected_count = len(self.items)
         ids = [i.item_id for i in self.items]
         if len(set(ids)) != len(ids):
             raise ValueError("item_id 不得重复")
@@ -84,14 +91,84 @@ def validate_coverage(plan: CommandPlanInput, source: str) -> list[tuple[int, in
         r"(?:创建|新增|新建)(?:以下|这|共|总共|分别|恰好|正好)?\s*(\d+)\s*(?:个|条|项)?(?:独立)?(?:执行)?(?:的)?任务",
         source,
     )
-    if counts and sum(int(n) for n in counts) != sum(i.tool == "create_task" for i in plan.items):
+    batch_tools = {"draft_project_plan", "batch_create_tasks", "batch_update_tasks", "apply_project_plan"}
+    created = sum(i.tool == "create_task" for i in plan.items)
+    if counts and created != sum(int(n) for n in counts) and not any(
+        i.tool in batch_tools for i in plan.items
+    ):
         raise ValueError("任务创建数量与用户明确要求的 N 不一致，尚有遗漏或额外动作")
-    # Numbered lines must all be represented, even if the planner omits an inconvenient item.
-    for match in re.finditer(r"(?m)^\s*(?:\d+[.、）)]|[-*])\s*(\S.*)$", source):
-        a, b = match.span(1)
-        if not any(start < b and end > a for start, end in spans):
-            raise ValueError("有编号指令没有对应执行项")
+    # One numbered requirement needs its own mapped item. Quoting the whole
+    # request once must not conceal omitted lines or duplicate one line N times.
+    # A single batch tool may cover many numbered lines.
+    requirements = source_requirements(source)
+    if requirements and any(item.tool in batch_tools for item in plan.items):
+        covered = set()
+        for item, (start, end) in zip(plan.items, spans, strict=True):
+            if item.tool not in batch_tools:
+                continue
+            for index, req in enumerate(requirements):
+                if start <= req["start"] and end >= req["end"]:
+                    covered.add(index)
+        if len(covered) == len(requirements):
+            return spans
+    matched: dict[int, int] = {}
+
+    def assign(index: int, visited: set[int]) -> bool:
+        requirement = requirements[index]
+        for item_index, (start, end) in enumerate(spans):
+            if sum(start <= r["start"] and end >= r["end"] for r in requirements) != 1:
+                continue
+            if item_index in visited or not (
+                start <= requirement["end"] and end >= requirement["start"]
+            ):
+                continue
+            # Require the complete numbered content, not a shared word.
+            if not (start <= requirement["start"] and end >= requirement["end"]):
+                continue
+            visited.add(item_index)
+            if item_index not in matched or assign(matched[item_index], visited):
+                matched[item_index] = index
+                return True
+        return False
+
+    missing = [
+        r["requirement_id"] for index, r in enumerate(requirements) if not assign(index, set())
+    ]
+    if missing:
+        raise ValueError("编号指令缺少独立执行项：" + "、".join(missing))
     return spans
+
+
+def source_requirements(source: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "requirement_id": f"r{index}",
+            "text": match.group(1),
+            "start": match.start(1),
+            "end": match.end(1),
+        }
+        for index, match in enumerate(
+            re.finditer(r"(?m)^[ \t]*(?:\d+[.、）)]|[-*])[ \t]*(\S[^\n]*)", source), 1
+        )
+    ]
+
+
+def missing_source_fields(source: str) -> list[str]:
+    """Task owners marked TBD may stay empty; project still needs a real owner/code."""
+    from app.core.owner_labels import has_project_pending_owner_line
+
+    questions = []
+    if has_project_pending_owner_line(source):
+        questions.append("请补充项目负责人")
+    # Accept: explicit 项目编号/代码, PRJ-1001 style, or code-like token in 项目：NLRP3 …
+    if re.search(r"(?m)^\s*项目[：:]", source) and not re.search(
+        r"(?m)^\s*项目(?:编号|代码)[：:][ \t]*[A-Za-z0-9][A-Za-z0-9_-]*"
+        r"|^\s*项目[：:][^\n]*\b[A-Z][A-Z0-9]*-\d+\b"
+        r"|^\s*项目[：:][ \t]*[A-Za-z][A-Za-z0-9_-]{1,31}\b",
+        source,
+    ):
+        questions.append("请提供新项目的唯一项目代码（例如 PRJ-1001）")
+    return questions
 
 
 class CommandRetryInput(BaseModel):

@@ -27,7 +27,7 @@ class TaskPlanningFields(BaseModel):
 
 class TaskBase(TaskPlanningFields):
     task_name: str = Field(min_length=1, max_length=300)
-    owner_id: int
+    owner_id: int | None = None
     due_date: date | None = None
 
 
@@ -89,7 +89,7 @@ class TaskResponse(TaskPlanningFields):
     project_id: int
     task_name: str
     work_stream: str | None
-    owner_id: int
+    owner_id: int | None
     start_date: date | None
     due_date: date | None
     progress_percent: int | None

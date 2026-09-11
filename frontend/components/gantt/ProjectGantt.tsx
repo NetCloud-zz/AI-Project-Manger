@@ -98,7 +98,7 @@ type GanttRow = {
   start?: Date;
   progress?: number;
   owner?: string;
-  owner_id?: number;
+  owner_id?: number | null;
   days?: number;
   visual_status?: GanttVisualStatus;
   risk_level?: GanttRiskLevel;
@@ -261,7 +261,7 @@ function OwnerEditCell({
   row: GanttRow;
   editable: boolean;
   options: OwnerChoice[];
-  onCommit: (taskId: number, ownerId: number) => Promise<void>;
+  onCommit: (taskId: number, ownerId: number | null) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -276,9 +276,10 @@ function OwnerEditCell({
     setEditing(true);
   };
 
-  const pick = async (next: number) => {
+  const pick = async (next: number | null) => {
     setEditing(false);
-    if (!next || next === ownerId) return;
+    if (next === ownerId) return;
+    if (next == null && ownerId == null) return;
     setSaving(true);
     try {
       await onCommit(taskId, next);
@@ -293,17 +294,18 @@ function OwnerEditCell({
         className="gantt-owner-editor"
         size="small"
         showSearch
+        allowClear
         autoFocus
         defaultOpen
         disabled={saving}
-        value={ownerId}
+        value={ownerId ?? undefined}
         options={options}
         optionFilterProp="label"
-        placeholder="选择负责人"
+        placeholder="待定"
         getPopupContainer={() => document.body}
         onClick={stopCellEvent}
         onMouseDown={stopCellEvent}
-        onChange={(next) => void pick(Number(next))}
+        onChange={(next) => void pick(next == null ? null : Number(next))}
         onDropdownVisibleChange={(open) => {
           if (!open) setEditing(false);
         }}
@@ -320,13 +322,13 @@ function OwnerEditCell({
   return (
     <span
       className={`gantt-owner-cell${editable ? " is-editable" : ""}`}
-      title={editable ? "双击更换负责人" : undefined}
+      title={editable ? "双击更换负责人（可清空为待定）" : undefined}
       onDoubleClick={begin}
       onMouseDown={(event) => {
         if (editable) event.stopPropagation();
       }}
     >
-      {row.owner || "—"}
+      {row.owner || "待定"}
     </span>
   );
 }
@@ -513,8 +515,8 @@ export function ProjectGantt({
   );
 
   const saveOwner = useCallback(
-    async (taskId: number, ownerId: number) => {
-      const picked = assignableUsers.find((user) => user.id === ownerId);
+    async (taskId: number, ownerId: number | null) => {
+      const picked = ownerId == null ? null : assignableUsers.find((user) => user.id === ownerId);
       try {
         const updated = await updateTask(taskId, { owner_id: ownerId });
         applyTaskPatch(taskId, {

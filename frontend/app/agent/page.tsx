@@ -175,6 +175,19 @@ function AgentPageInner() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  useEffect(() => {
+    function restoreCommand(event: Event) {
+      const source = (event as CustomEvent<unknown>).detail;
+      if (typeof source !== "string") return;
+      if (sending || input.trim()) {
+        message.warning("请先处理当前输入或等待生成结束，再补充原指令。");
+        return;
+      }
+      setInput(source);
+    }
+    window.addEventListener("agent:restore-command", restoreCommand);
+    return () => window.removeEventListener("agent:restore-command", restoreCommand);
+  }, [input, sending, message]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
@@ -743,7 +756,7 @@ function AgentPageInner() {
                 : [];
               const statusRaw = String(data.status ?? "COMPLETED");
               const status =
-                statusRaw === "STOPPED" || statusRaw === "INTERRUPTED"
+                statusRaw === "STOPPED" || statusRaw === "INTERRUPTED" || statusRaw === "FAILED"
                   ? (statusRaw as AgentMessage["status"])
                   : "COMPLETED";
               patchAssistant({

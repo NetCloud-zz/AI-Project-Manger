@@ -20,6 +20,7 @@ TASK_QUERY_FIELDS: dict[str, str] = {
     "planned_due_date": "due_date",
     "risk_level": "ai_risk_level",
     "owner_id": "owner_id",
+    "owner_name": "owner.name",
     "created_at": "created_at",
     # Computed (handled in policy/builder, not ORM getattr):
     "is_overdue": "__computed__",
@@ -48,8 +49,40 @@ ISSUE_QUERY_FIELDS: dict[str, str] = {
     "severity": "severity",
 }
 
+USER_QUERY_FIELDS: dict[str, str] = {
+    "id": "id",
+    "name": "name",
+    "username": "username",
+    "department": "department",
+    "role": "role",
+    "status": "status",
+}
+
+MILESTONE_QUERY_FIELDS: dict[str, str] = {
+    "id": "id",
+    "project_id": "project_id",
+    "name": "name",
+    "target_date": "target_date",
+    "status": "status",
+    "owner_id": "owner_id",
+}
+
+PROJECT_MEMBER_QUERY_FIELDS: dict[str, str] = {
+    "project_id": "project_id",
+    "user_id": "user_id",
+    "role": "role",
+    "is_active": "is_active",
+    "user_name": "user_name",
+    "project_code": "project_code",
+}
+
 ENTITY_FIELDS = {
     "task": TASK_QUERY_FIELDS,
     "project": PROJECT_QUERY_FIELDS,
     "issue": ISSUE_QUERY_FIELDS,
+    "user": USER_QUERY_FIELDS,
+    "milestone": MILESTONE_QUERY_FIELDS,
+    "project_member": PROJECT_MEMBER_QUERY_FIELDS,
 }
+
+QUERYABLE_ENTITIES = frozenset(ENTITY_FIELDS)

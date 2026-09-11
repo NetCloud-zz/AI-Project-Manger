@@ -12,6 +12,7 @@ from app.models.agent_conversation import (
     MessageStatus,
 )
 from app.models.agent_memory import AgentMemory, MemoryScope, MemoryType
+from app.models.agent_batch import AgentBatchItem, AgentBatchOperation
 from app.models.agent_command import AgentCommandItem, AgentCommandPlan
 from app.models.agent_request import (
     AgentOperation,
@@ -49,6 +50,8 @@ from app.models.task import Task, TaskAiStatus, TaskLink, TaskLinkType, TaskStat
 from app.models.user import User, UserRole, UserStatus
 
 __all__ = [
+    "AgentBatchItem",
+    "AgentBatchOperation",
     "AgentCommandItem",
     "AgentCommandPlan",
     "ChangeProposal",

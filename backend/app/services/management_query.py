@@ -9,13 +9,15 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import can_view_project, can_view_task
 from app.models.issue import IssueStatus
 from app.models.project import Project
 from app.models.task import Task, TaskAiStatus, TaskStatus
-from app.models.user import User
+from app.models.planning import Milestone, ProjectMember
+from app.models.user import User, UserStatus
 from app.repositories.user import UserRepository
 from app.schemas.dashboard import ManagementAttentionItem
 from app.schemas.task import TaskPlanningFields
@@ -187,6 +189,8 @@ class ManagementQueryService:
         return {
             "ok": True,
             "action": "get_current_user",
+            # Both keys are intentional: planners may $ref ``id`` or ``user_id``.
+            "id": actor.id,
             "user_id": actor.id,
             "name": actor.name,
             "username": actor.username,
@@ -509,6 +513,110 @@ class ManagementQueryService:
                 "truncated": result["truncated"],
                 "note": "权限过滤后由 Query DSL 求值；禁止将截断页称为全部。",
             },
+        }
+
+    def query_entities(self, actor: User, request: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Whitelist entity query. Agent supplies filters, never SQL."""
+        from app.agents.query import AgentQueryRequest, QueryPolicyValidator, apply_query
+        from app.agents.query.fields import QUERYABLE_ENTITIES
+
+        payload = dict(request or {})
+        entity = str(payload.pop("entity", "") or "").strip()
+        if entity not in QUERYABLE_ENTITIES:
+            raise DomainValidationError("不支持的查询实体")
+        parsed = AgentQueryRequest.model_validate(payload)
+        QueryPolicyValidator(entity).validate(parsed)
+        rows = self._entity_rows(actor, entity)
+        result = apply_query(rows, parsed, entity=entity, clock=self.clock)
+        items = result["items"]
+        if entity == "task":
+            items = [
+                task_payload(row) if not isinstance(row, dict) else row for row in items
+            ]
+        elif entity == "project":
+            items = [
+                _project_payload(row) if not isinstance(row, dict) else row for row in items
+            ]
+        elif entity == "issue":
+            items = [
+                self._issue_payload(row) if not isinstance(row, dict) else row for row in items
+            ]
+        return {
+            "ok": True,
+            "action": "query_entities",
+            "entity": entity,
+            "items": items,
+            "total": result["total"],
+            "limit": result["limit"],
+            "offset": result["offset"],
+            "coverage": {
+                "returned": len(items),
+                "total_matched": result["total"],
+                "truncated": result["truncated"],
+                "note": "权限过滤后由 Query DSL 求值；禁止将截断页称为全部。",
+            },
+        }
+
+    def _entity_rows(self, actor: User, entity: str) -> list[Any]:
+        if entity == "task":
+            return list(self._visible_tasks(actor))
+        if entity == "project":
+            return list(self._visible_projects(actor))
+        if entity == "issue":
+            return list(self._visible_issues(actor))
+        if entity == "user":
+            return [
+                {
+                    "id": user.id,
+                    "name": user.name,
+                    "username": user.username,
+                    "department": user.department,
+                    "role": user.role.value,
+                    "status": user.status.value,
+                }
+                for user in self.db.scalars(
+                    select(User).where(User.status == UserStatus.ACTIVE).order_by(User.id)
+                )
+            ]
+        if entity == "milestone":
+            project_ids = {project.id for project in self._visible_projects(actor)}
+            if not project_ids:
+                return []
+            return list(
+                self.db.scalars(select(Milestone).where(Milestone.project_id.in_(project_ids)))
+            )
+        if entity == "project_member":
+            rows = []
+            for project in self._visible_projects(actor):
+                members = self.db.scalars(
+                    select(ProjectMember).where(ProjectMember.project_id == project.id)
+                )
+                for member in members:
+                    user = self.db.get(User, member.user_id)
+                    rows.append(
+                        {
+                            "project_id": project.id,
+                            "project_code": project.project_code,
+                            "user_id": member.user_id,
+                            "user_name": user.name if user else None,
+                            "role": member.role,
+                            "is_active": member.is_active,
+                        }
+                    )
+            return rows
+        raise DomainValidationError("不支持的查询实体")
+
+    def _visible_issues(self, actor: User) -> list[Any]:
+        return list(self.issues.list_issues(actor))
+
+    def _issue_payload(self, issue: Any) -> dict[str, Any]:
+        return {
+            "id": issue.id,
+            "project_id": issue.project_id,
+            "task_id": getattr(issue, "task_id", None),
+            "title": issue.title,
+            "status": _enum_value(issue.status),
+            "severity": _enum_value(getattr(issue, "severity", None)),
         }
 
     def search_projects(self, actor: User, request: dict[str, Any] | None = None) -> dict[str, Any]:

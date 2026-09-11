@@ -37,6 +37,8 @@ class QueryPolicyValidator:
     def validate(self, request: AgentQueryRequest) -> AgentQueryRequest:
         for filt in request.filters:
             self._check_filter(filt)
+        for field in request.fields:
+            self._check_field(field)
         for sort in request.sort:
             self._check_sort(sort)
         for field in request.group_by:

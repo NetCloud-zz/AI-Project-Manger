@@ -17,7 +17,7 @@ from app.agents.management_tools import (
     infer_stub_tools,
 )
 from app.agents.stream_events import AgentStreamEvent, friendly_tool_name
-from app.agents.tool_result import unwrap_tool_data
+from app.agents.tool_result import parse_tool_result_json, unwrap_tool_data
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.llm.base import LLMError
@@ -27,6 +27,7 @@ from app.models.user import User
 from app.prompts import load_prompt
 from app.schemas.agent import AgentChatResponse
 from app.services.agent_entities import (
+    authorization_source,
     requires_fresh_facts,
     should_use_command_plan,
 )
@@ -34,8 +35,86 @@ from app.services.management_query import ManagementQueryService
 
 logger = get_logger(__name__)
 
-MAX_TOOL_ROUNDS = 6
+MAX_TOOL_ROUNDS = 20  # kept for older imports; prefer the split caps below
+MAX_AGENT_REASONING_ROUNDS = 20
+MAX_TOOL_CORRECTION_ROUNDS = 10
 SYSTEM_PROMPT = load_prompt("management_agent")
+_WRITE_CORRECTION_TOOLS = frozenset(
+    {
+        "batch_create_tasks",
+        "batch_update_tasks",
+        "draft_project_plan",
+        "update_project_plan_draft",
+        "apply_project_plan",
+        "create_task",
+        "create_project",
+        "update_task",
+        "update_project",
+        "propose_change",
+        "execute_change_plan",
+    }
+)
+
+
+def _prior_user_texts(context_messages: list[ChatMessage] | None) -> list[str]:
+    if not context_messages:
+        return []
+    return [
+        item.content
+        for item in context_messages
+        if item.role == "user" and isinstance(item.content, str) and item.content.strip()
+    ]
+
+
+def _write_auth_source(
+    message: str,
+    *,
+    context_messages: list[ChatMessage] | None,
+    agent_request_id: int | None,
+) -> str | None:
+    if agent_request_id is None:
+        return None
+    return authorization_source(message, _prior_user_texts(context_messages))
+
+
+class CorrectionTracker:
+    """Count parameter retries for one write operation. Reads do not consume this budget."""
+
+    def __init__(self, limit: int = MAX_TOOL_CORRECTION_ROUNDS) -> None:
+        self.limit = limit
+        self.counts: dict[str, int] = {}
+        self.last_key: str | None = None
+
+    def record(self, tool: str, *, ok: bool, operation_id: str | None) -> bool:
+        if tool not in _WRITE_CORRECTION_TOOLS:
+            return False
+        key = operation_id or tool
+        self.last_key = key
+        if ok:
+            self.counts.pop(key, None)
+            return False
+        self.counts[key] = self.counts.get(key, 0) + 1
+        return self.counts[key] >= self.limit
+
+    def diagnosis(self) -> str:
+        key = self.last_key or "operation"
+        return (
+            f"同一操作 {key} 的参数纠错已达 {self.limit} 次，已停止自动重试。"
+            "请根据失败 item 的 error_code 补充信息后再发新请求。"
+        )
+
+
+def _reasoning_rounds(settings: Settings | None = None) -> int:
+    cfg = settings or get_settings()
+    return int(getattr(cfg, "AGENT_REASONING_ROUNDS", MAX_AGENT_REASONING_ROUNDS) or MAX_AGENT_REASONING_ROUNDS)
+
+
+def _correction_rounds(settings: Settings | None = None) -> int:
+    cfg = settings or get_settings()
+    return int(
+        getattr(cfg, "AGENT_TOOL_CORRECTION_ROUNDS", MAX_TOOL_CORRECTION_ROUNDS)
+        or MAX_TOOL_CORRECTION_ROUNDS
+    )
 
 
 def _budget_exhausted_message(execution_log: list[dict]) -> str:
@@ -88,6 +167,7 @@ class ManagementAgent:
     ) -> None:
         self._db = db
         self._settings = settings or get_settings()
+        self._injected_gateway = gateway is not None
         self._gateway = gateway or create_llm_gateway(self._settings)
 
     async def chat(
@@ -103,7 +183,9 @@ class ManagementAgent:
         if (
             agent_request_id is not None
             and allow_writes
-            and should_use_command_plan(message)
+            and should_use_command_plan(
+                authorization_source(message, _prior_user_texts(context_messages))
+            )
             and self._gateway.configured
         ):
             from app.agents.command_agent import command_stream
@@ -131,13 +213,43 @@ class ManagementAgent:
                 allow_writes=allow_writes,
                 agent_request_id=agent_request_id,
             )
+        if self._should_use_agentscope():
+            reply, cards = [], []
+            tools_used: list[str] = []
+            tool_results: list[dict] = []
+            async for event in self._agentscope_stream(
+                message,
+                actor=actor,
+                context_messages=context_messages,
+                allow_writes=allow_writes,
+                agent_request_id=agent_request_id,
+            ):
+                if event.event == "delta":
+                    reply.append(str(event.data.get("content") or ""))
+                elif event.event == "card":
+                    cards.append(event.data)
+                elif event.event == "tool_start":
+                    name = str(event.data.get("tool") or "")
+                    if name:
+                        tools_used.append(name)
+                elif event.event == "tool_end":
+                    tool_results.append(dict(event.data))
+            return AgentChatResponse(
+                reply="".join(reply) or "没有查到相关数据。",
+                tools_used=list(dict.fromkeys(tools_used)),
+                tool_results=tool_results,
+                cards=cards,
+                llm_used=True,
+            )
 
         executor = ManagementToolExecutor(
             self._db,
             actor,
             allow_writes=allow_writes,
             agent_request_id=agent_request_id,
-            source_message=message if agent_request_id is not None else None,
+            source_message=_write_auth_source(
+                message, context_messages=context_messages, agent_request_id=agent_request_id
+            ),
         )
         messages = context_messages or [
             ChatMessage(role="system", content=runtime_system_prompt(self._settings)),
@@ -146,7 +258,8 @@ class ManagementAgent:
         messages = self._prime_fresh_facts(messages, executor, message, actor)
 
         try:
-            for _round in range(MAX_TOOL_ROUNDS):
+            tracker = CorrectionTracker(limit=_correction_rounds(self._settings))
+            for _round in range(_reasoning_rounds(self._settings)):
                 response = await self._gateway.chat_with_tools(
                     messages=messages,
                     tools=MANAGEMENT_TOOLS,
@@ -171,6 +284,7 @@ class ManagementAgent:
                 )
                 for call in response.tool_calls:
                     tool_result = executor.execute(call.name, call.arguments, tool_call_id=call.id)
+                    parsed = parse_tool_result_json(tool_result)
                     messages.append(
                         ChatMessage(
                             role="tool",
@@ -178,8 +292,18 @@ class ManagementAgent:
                             tool_call_id=call.id,
                         )
                     )
+                    if tracker.record(
+                        call.name, ok=parsed.ok, operation_id=parsed.operation_id
+                    ):
+                        return AgentChatResponse(
+                            reply=tracker.diagnosis(),
+                            tools_used=list(dict.fromkeys(executor.tools_used)),
+                            tool_results=list(executor.execution_log),
+                            cards=list(executor.cards),
+                            llm_used=True,
+                        )
 
-            logger.warning("agent.management.max_tool_rounds", rounds=MAX_TOOL_ROUNDS)
+            logger.warning("agent.management.max_tool_rounds", rounds=_reasoning_rounds(self._settings))
             return AgentChatResponse(
                 reply=_budget_exhausted_message(executor.execution_log),
                 tools_used=list(dict.fromkeys(executor.tools_used)),
@@ -214,7 +338,9 @@ class ManagementAgent:
         if (
             agent_request_id is not None
             and allow_writes
-            and should_use_command_plan(message)
+            and should_use_command_plan(
+                authorization_source(message, _prior_user_texts(context_messages))
+            )
             and self._gateway.configured
         ):
             from app.agents.command_agent import command_stream
@@ -240,13 +366,25 @@ class ManagementAgent:
             ):
                 yield event
             return
+        if self._should_use_agentscope():
+            async for event in self._agentscope_stream(
+                message,
+                actor=actor,
+                context_messages=context_messages,
+                allow_writes=allow_writes,
+                agent_request_id=agent_request_id,
+            ):
+                yield event
+            return
 
         executor = ManagementToolExecutor(
             self._db,
             actor,
             allow_writes=allow_writes,
             agent_request_id=agent_request_id,
-            source_message=message if agent_request_id is not None else None,
+            source_message=_write_auth_source(
+                message, context_messages=context_messages, agent_request_id=agent_request_id
+            ),
         )
         emitted_cards = 0
         messages = context_messages or [
@@ -256,7 +394,8 @@ class ManagementAgent:
         messages = self._prime_fresh_facts(messages, executor, message, actor)
 
         try:
-            for _round in range(MAX_TOOL_ROUNDS):
+            tracker = CorrectionTracker(limit=_correction_rounds(self._settings))
+            for _round in range(_reasoning_rounds(self._settings)):
                 content_parts: list[str] = []
                 tool_calls: list[ToolCall] = []
 
@@ -321,19 +460,88 @@ class ManagementAgent:
                                 tool_call_id=call.id,
                             )
                         )
+                        if tracker.record(
+                            call.name, ok=envelope.ok, operation_id=envelope.operation_id
+                        ):
+                            yield AgentStreamEvent(
+                                event="delta", data={"content": tracker.diagnosis()}
+                            )
+                            return
                     continue
 
                 if not full_content.strip():
                     yield AgentStreamEvent(event="delta", data={"content": "没有查到相关数据。"})
                 return
 
-            logger.warning("agent.management.max_tool_rounds", rounds=MAX_TOOL_ROUNDS)
+            logger.warning(
+                "agent.management.max_tool_rounds", rounds=_reasoning_rounds(self._settings)
+            )
             yield AgentStreamEvent(
                 event="delta",
                 data={"content": _budget_exhausted_message(executor.execution_log)},
             )
         except LLMError as exc:
             logger.warning("agent.management.llm_error", error=str(exc))
+            stub_prefix = "（AI 服务暂时不可用，以下为工具查询结果）\n\n"
+            async for event in self._stub_chat_stream(
+                message,
+                actor=actor,
+                context_messages=context_messages,
+                reply_prefix=stub_prefix,
+                allow_writes=allow_writes,
+                agent_request_id=agent_request_id,
+            ):
+                yield event
+
+    def _should_use_agentscope(self) -> bool:
+        runtime = getattr(self._settings, "AGENT_RUNTIME", "agentscope")
+        if runtime != "agentscope" or self._injected_gateway:
+            return False
+        from app.agents.agentscope_runtime import is_agentscope_available
+
+        if is_agentscope_available():
+            return True
+        logger.warning("agent.agentscope.unavailable_fallback_legacy")
+        return False
+
+    async def _agentscope_stream(
+        self,
+        message: str,
+        *,
+        actor: User,
+        context_messages: list[ChatMessage] | None,
+        allow_writes: bool,
+        agent_request_id: int | None,
+    ) -> AsyncIterator[AgentStreamEvent]:
+        from app.agents.agentscope_runtime import run_agentscope_chat_stream
+
+        executor = ManagementToolExecutor(
+            self._db,
+            actor,
+            allow_writes=allow_writes,
+            agent_request_id=agent_request_id,
+            source_message=_write_auth_source(
+                message, context_messages=context_messages, agent_request_id=agent_request_id
+            ),
+        )
+        messages = context_messages or [
+            ChatMessage(role="system", content=runtime_system_prompt(self._settings)),
+            ChatMessage(role="user", content=message),
+        ]
+        messages = self._prime_fresh_facts(messages, executor, message, actor)
+        try:
+            async for event in run_agentscope_chat_stream(
+                self._db,
+                self._settings,
+                message,
+                actor=actor,
+                context_messages=messages,
+                executor=executor,
+                agent_request_id=agent_request_id,
+            ):
+                yield event
+        except LLMError as exc:
+            logger.warning("agent.management.llm_error", error=str(exc), runtime="agentscope")
             stub_prefix = "（AI 服务暂时不可用，以下为工具查询结果）\n\n"
             async for event in self._stub_chat_stream(
                 message,

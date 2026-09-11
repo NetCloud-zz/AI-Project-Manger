@@ -140,7 +140,7 @@ export function ChangeProposalPanel({ projectId, data, users, refreshKey, initia
           <Table rowKey="task_id" pagination={false} dataSource={diff.tasks} columns={[
             { title: "任务", render: (_, task) => String(task.after.task_name) },
             { title: "变更", render: (_, task) => task.before ? "修改" : "新增" },
-            { title: "完整字段差异", render: (_, task) => Object.entries(fields).filter(([key]) => task.after[key] !== task.before?.[key] && (task.before != null || task.after[key] != null)).map(([key, label]) => <p key={key}>{label}：{key === "owner_id" && task.before?.[key] != null ? person(Number(task.before[key])) : display(task.before?.[key])} → {key === "owner_id" ? person(Number(task.after[key])) : display(task.after[key])}</p>) },
+            { title: "完整字段差异", render: (_, task) => Object.entries(fields).filter(([key]) => task.after[key] !== task.before?.[key] && (task.before != null || task.after[key] != null)).map(([key, label]) => <p key={key}>{label}：{key === "owner_id" ? (task.before?.[key] != null ? person(Number(task.before[key])) : "待定") : display(task.before?.[key])} → {key === "owner_id" ? (task.after[key] != null ? person(Number(task.after[key])) : "待定") : display(task.after[key])}</p>) },
           ]} />
           {diff.project && <p>项目目标：{display(diff.project.before.target_date)} → {display(diff.project.after.target_date)}</p>}
           <h4>依赖关系：变更前 / 变更后</h4>
@@ -177,7 +177,9 @@ export function ChangeProposalPanel({ projectId, data, users, refreshKey, initia
         <Form.List name="new_tasks">{(items, { add, remove }) => <>{items.map(item => <AppCard key={item.key}>
           <Form.Item name={[item.name, "client_id"]} hidden><InputNumber /></Form.Item>
           <Form.Item name={[item.name, "task", "task_name"]} label="任务名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name={[item.name, "task", "owner_id"]} label="负责人" rules={[{ required: true }]}><Select options={users} /></Form.Item>
+          <Form.Item name={[item.name, "task", "owner_id"]} label="负责人" extra="可留空，表示待定">
+            <Select allowClear placeholder="待定" options={users} />
+          </Form.Item>
           <Space wrap><Form.Item name={[item.name, "task", "start_date"]} label="计划开始"><DatePicker /></Form.Item><Form.Item name={[item.name, "task", "due_date"]} label="计划截止"><DatePicker /></Form.Item><Form.Item name={[item.name, "task", "planned_duration_days"]} label="计划工作日"><InputNumber min={1} max={10000} precision={0} /></Form.Item></Space>
           <Form.Item name={[item.name, "task", "deliverable"]} label="交付物"><Input /></Form.Item><Form.Item name={[item.name, "task", "acceptance_criteria"]} label="验收条件"><Input /></Form.Item>
           <Button onClick={() => remove(item.name)}>移除新增任务</Button>

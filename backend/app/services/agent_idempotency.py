@@ -138,6 +138,30 @@ def mark_request_finished(
     assistant_message_id: int | None = None,
     error_code: str | None = None,
 ) -> None:
+    """Persist a terminal request status. Already-terminal rows are not overwritten.
+
+    STOPPED is never replaced by INTERRUPTED (cancel vs disconnect race).
+    """
+    terminal = {
+        AgentRequestStatus.COMPLETED,
+        AgentRequestStatus.FAILED,
+        AgentRequestStatus.STOPPED,
+        AgentRequestStatus.INTERRUPTED,
+    }
+    if request.status in terminal and request.status != status:
+        if request.status == AgentRequestStatus.STOPPED and status == AgentRequestStatus.INTERRUPTED:
+            return
+        if request.status in {
+            AgentRequestStatus.COMPLETED,
+            AgentRequestStatus.FAILED,
+            AgentRequestStatus.STOPPED,
+        }:
+            return
+        if (
+            request.status == AgentRequestStatus.INTERRUPTED
+            and status != AgentRequestStatus.STOPPED
+        ):
+            return
     request.status = status
     request.completed_at = datetime.now(UTC)
     if user_message_id is not None:

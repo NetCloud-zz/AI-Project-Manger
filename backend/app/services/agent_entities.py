@@ -74,7 +74,16 @@ def resolve_arguments(
         and not args.get("owner_id")
         and tool.startswith(("create_", "update_"))
     ):
-        args["owner_id"] = resolve_owner(db, str(args["owner_name"])).id
+        from app.core.owner_labels import is_pending_owner_label
+
+        if is_pending_owner_label(str(args["owner_name"])):
+            # Keep unassigned; create_task / update_task treat missing owner_id as TBD.
+            args.pop("owner_name", None)
+            if tool.startswith("update_"):
+                args["owner_id"] = None
+        else:
+            args["owner_id"] = resolve_owner(db, str(args["owner_name"])).id
+            args.pop("owner_name", None)
     if args.get("task_id") and args.get("target_task_name"):
         task = db.get(Task, int(args["task_id"]))
         if task is None or not can_view_task(db, actor, task):
@@ -154,7 +163,39 @@ _VAGUE = re.compile(
     r"往前推|推(?:进|动)?一点|宽松(?:一?些|一点)?|稍微|高一点|低一点|差不多|随便|看着办|酌情|尽快安排"
 )
 _MUTATION = re.compile(
-    r"创建|新增|新建|登记|记录|提交|更新|修改|设置|设为|改为|改成|调整|分配|指派|取消|延期|改期|完成度.*(?:改|调)|往前推|推进一点|宽松"
+    r"(?:"
+    r"创建|新增|新建|登记|记录|提交|更新|修改|设置|设为|改为|改成|调整|分配|指派|取消|延期|改期|"
+    r"完成度.*(?:改|调)|往前推|推进一点|宽松|"
+    # Natural create / execute phrasing (exploratory NL-01).
+    r"弄个|弄一个|弄起来|建个|建一个|帮我建|现在就建|立项|起草(?:计划|草案)?|"
+    r"确认创建|确认执行|就按你说的(?:建好|建|办|做|弄)?|按你说的(?:建好|办|执行)|"
+    r"就这么办|执行吧"
+    r")"
+)
+_CONFIRMATION = re.compile(
+    r"(?:"
+    r"确认创建|确认执行|现在就建|现在就创建|"
+    r"好啊?[，,。！!\s]*弄起来|弄起来吧|"
+    r"就按你说的|按你说的(?:建|办|做|弄|执行)|"
+    r"就这么办|执行吧|可以执行|可以建"
+    r")"
+)
+# Soft affirmatives only inherit a prior create turn — never authorize alone.
+_WEAK_CONFIRMATION = re.compile(
+    r"(?:"
+    r"^(?:好的?|可以了|行|OK|ok|嗯)[。！!？?\s]*$|"
+    r"行[，,。！!\s]+(?:就|按)"
+    r")"
+)
+# Status checks must not inherit write authorization (exploratory NL-05).
+_STATUS_QUERY = re.compile(
+    r"(?:"
+    r"(?:有没有|是否|到底).{0,16}(?:建|创建|弄|落库)|"
+    r"(?:建|创建)好了吗|"
+    r"创建成功了吗|"
+    r"落库了吗|"
+    r"有没有建好"
+    r")"
 )
 # Only cancel writes for clear read-only / discussion framing.
 # "不要创建其它任务" must NOT cancel an explicit create-N request.
@@ -165,7 +206,9 @@ _READ_ONLY_INTENT = re.compile(
     r"不(?:要|用)进行任何(?:写入|修改|创建|操作)|"
     r"明确不要创建[、,，\s]*不要修改|"
     r"不要创建[、,，\s]*不要修改[、,，\s]*不要删除|"
-    r"只(?:读|查询)(?:[，。]|$)"
+    r"只(?:读|查询)(?:[，。]|$)|"
+    r"(?:先算了|算了).{0,8}别(?:建|创建|弄)|"
+    r"别建了|不要建了|别创建了"
     r")"
 )
 _FRESH_FACTS = re.compile(
@@ -173,18 +216,50 @@ _FRESH_FACTS = re.compile(
 )
 
 
+def is_status_query(source: str) -> bool:
+    return bool(_STATUS_QUERY.search(source))
+
+
+def is_confirmation(source: str) -> bool:
+    return bool(_CONFIRMATION.search(source))
+
+
 def has_mutation_intent(source: str) -> bool:
-    if not _MUTATION.search(source):
+    if is_status_query(source):
+        return False
+    if not (_MUTATION.search(source) or is_confirmation(source)):
         return False
     if not _READ_ONLY_INTENT.search(source):
         return True
     # Conflicting framing: explicit create-N still authorizes writes.
     return bool(
         re.search(
-            r"(?:创建|新增|新建)(?:以下|这|共|总共|分别|恰好|正好)?\s*\d+\s*(?:个|条|项)",
+            r"(?:创建|新增|新建|弄个|建个)(?:以下|这|共|总共|分别|恰好|正好)?\s*\d+\s*(?:个|条|项)",
             source,
         )
     )
+
+
+def authorization_source(
+    message: str,
+    prior_user_messages: list[str] | None = None,
+) -> str:
+    """Text used by mutation guard / command-plan routing.
+
+    Follow-up confirmations inherit write intent from the nearest prior user
+    message that already authorized mutation. Status queries never inherit.
+    """
+    if is_status_query(message):
+        return message
+    if has_mutation_intent(message):
+        return message
+    if prior_user_messages and (
+        is_confirmation(message) or _WEAK_CONFIRMATION.search(message.strip())
+    ):
+        for prior in reversed(prior_user_messages):
+            if prior and has_mutation_intent(prior):
+                return prior
+    return message
 
 
 def requires_fresh_facts(source: str) -> bool:
@@ -196,7 +271,7 @@ def should_use_command_plan(source: str) -> bool:
     """Durable command executor for writes and multi-step compound instructions."""
     if has_mutation_intent(source):
         return True
-    verbs = len(re.findall(r"创建|更新|修改|查询|列出|查一下|再建|登记|再查", source))
+    verbs = len(re.findall(r"创建|更新|修改|查询|列出|查一下|再建|登记|再查|弄个|建个", source))
     return verbs >= 3
 
 

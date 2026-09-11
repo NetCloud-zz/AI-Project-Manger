@@ -260,10 +260,11 @@ class ChangeProposalService:
         assert project is not None
         change = ChangeRequest.model_validate(row.request)
         ids = {actor.id, project.owner_id} | {owner.id for owner in project.owners}
-        ids.update(task.owner_id for task in self.planning.rows(Task, row.project_id))
+        ids.update(task.owner_id for task in self.planning.rows(Task, row.project_id) if task.owner_id)
         ids.update(member.user_id for member in self.planning.rows(ProjectMember, row.project_id))
         ids.update(p.owner_id for p in change.changes if p.owner_id is not None)
-        ids.update(item.task.owner_id for item in change.new_tasks)
+        ids.update(item.task.owner_id for item in change.new_tasks if item.task.owner_id is not None)
+        ids.discard(None)
         # Acquire the complete set once in a stable order across projects.
         list(
             self.db.scalars(
@@ -336,8 +337,8 @@ class ChangeProposalService:
             if original[patch.task_id].status == TaskStatus.COMPLETED:
                 raise DomainValidationError("已完成任务不能通过排期方案修改")
             values = patch.model_dump(mode="json", exclude_unset=True, exclude={"task_id"})
-            if any(values.get(key) is None for key in ("owner_id", "task_name") if key in values):
-                raise DomainValidationError("负责人和任务名称不能为空")
+            if "task_name" in values and values.get("task_name") is None:
+                raise DomainValidationError("任务名称不能为空")
             if "work_stream" in values:
                 values["work_stream"] = _normalize_work_stream(values["work_stream"])
             final[patch.task_id].update(values)

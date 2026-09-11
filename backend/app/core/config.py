@@ -124,6 +124,11 @@ class Settings(BaseSettings):
     AGENT_MAX_CONTEXT_TOKENS: int = 1_000_000
     # Rolling summary kicks in after this many stored messages (async, fast model).
     AGENT_SUMMARY_TRIGGER_MESSAGES: int = 40
+    # Project Assistant ReAct runtime. ``legacy`` keeps the in-house tool loop.
+    AGENT_RUNTIME: Literal["agentscope", "legacy"] = "agentscope"
+    # LLM turns vs per-operation parameter retries. Do not collapse these into one cap.
+    AGENT_REASONING_ROUNDS: int = Field(default=20, ge=1, le=50)
+    AGENT_TOOL_CORRECTION_ROUNDS: int = Field(default=10, ge=1, le=20)
 
     # --- WeCom (optional) ---
     WECOM_CORP_ID: str | None = None

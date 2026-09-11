@@ -16,6 +16,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.owner_labels import is_pending_owner_label
 from app.core.permissions import (
     can_modify_project,
     can_request_issue_advice,
@@ -295,7 +296,8 @@ class ManagementPlanningService:
     # ---------------------------------------------------------- plan drafting
 
     def draft_project_plan(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
-        content = PlanDraftContent.model_validate(args.get("plan") or {})
+        plan = self._resolve_plan_owners(args.get("plan") or {})
+        content = PlanDraftContent.model_validate(plan)
         result = self.drafts.create(
             PlanDraftCreate(
                 title=str(args.get("title") or content.project.project_name)[:200],
@@ -310,7 +312,8 @@ class ManagementPlanningService:
     def update_project_plan_draft(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
         draft_id = str(args["draft_id"])
         current = self.drafts.get(draft_id, actor)
-        content = PlanDraftContent.model_validate(args.get("plan") or {})
+        plan = self._resolve_plan_owners(args.get("plan") or {})
+        content = PlanDraftContent.model_validate(plan)
         result = self.drafts.update(
             draft_id,
             PlanDraftUpdate(
@@ -335,6 +338,97 @@ class ManagementPlanningService:
         )
         self.db.commit()
         return self._draft_result(result, "review_project_plan_draft")
+
+    def validate_project_plan(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        return self.review_project_plan_draft(actor, args)
+
+    def apply_project_plan(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        from app.schemas.plan_draft import PlanDraftPublish
+
+        draft_id = str(args["draft_id"])
+        current = self.drafts.get(draft_id, actor)
+        body = PlanDraftPublish(
+            digest=str(args["digest"]),
+            expected_revision=int(args.get("expected_revision") or current["revision"]),
+            idempotency_key=self._key(args),
+        )
+        result = self.drafts.publish(draft_id, body, actor)
+        self.db.commit()
+        payload = self._draft_result(result, "apply_project_plan")
+        review = result.get("review") or {}
+        expected = int(review.get("task_count") or 0)
+        created = 0
+        if result.get("result") and isinstance(result["result"], dict):
+            created = len(result["result"].get("task_id_map") or result["result"].get("tasks") or [])
+        if result.get("status") != "PUBLISHED":
+            payload["ok"] = False
+            payload["error_code"] = "VALIDATION_FAILED"
+            payload["message"] = result.get("failure_reason") or "草案尚未发布"
+            payload["verification"] = {
+                "status": "VALIDATION_FAILED",
+                "expected_count": expected,
+                "actual_count": created,
+                "duplicate_count": 0,
+            }
+            return payload
+        payload["verification"] = {
+            "status": "SUCCESS" if (expected == 0 or created == expected) else "VALIDATION_FAILED",
+            "expected_count": expected,
+            "actual_count": created,
+            "duplicate_count": 0,
+        }
+        if payload["verification"]["status"] != "SUCCESS":
+            payload["ok"] = False
+            payload["error_code"] = "VALIDATION_FAILED"
+            payload["message"] = "发布后校验未通过"
+        return payload
+
+    def _resolve_plan_owners(self, plan: dict[str, Any]) -> dict[str, Any]:
+        from app.services.management_write import ManagementWriteService
+
+        data = dict(plan)
+        project = dict(data.get("project") or {})
+        tasks = [dict(item) for item in (data.get("tasks") or [])]
+        names: list[str] = []
+        if project.get("owner_name") and not project.get("owner_id"):
+            pname = str(project["owner_name"]).strip()
+            if not is_pending_owner_label(pname):
+                names.append(pname)
+        for task in tasks:
+            if task.get("owner_name") and not task.get("owner_id"):
+                name = str(task["owner_name"]).strip()
+                if is_pending_owner_label(name):
+                    continue
+                names.append(name)
+        people = ManagementWriteService(self.db, auto_commit=False).find_users(names=names)
+        resolved = {row["input"]: row["user_id"] for row in people.get("resolved", [])}
+        questions = list(data.get("open_questions") or [])
+        if project.get("owner_name") and not project.get("owner_id"):
+            pname = str(project["owner_name"]).strip()
+            if is_pending_owner_label(pname):
+                questions.append("请补充项目负责人")
+            else:
+                owner_id = resolved.get(pname)
+                if owner_id:
+                    project["owner_id"] = owner_id
+                else:
+                    questions.append(f"请确认项目负责人：{project['owner_name']}")
+        for task in tasks:
+            if task.get("owner_name") and not task.get("owner_id"):
+                name = str(task["owner_name"]).strip()
+                if is_pending_owner_label(name):
+                    task["owner_id"] = None
+                    task.pop("owner_name", None)
+                    continue
+                owner_id = resolved.get(name)
+                if owner_id:
+                    task["owner_id"] = owner_id
+                else:
+                    questions.append(f"请确认任务「{task.get('task_name')}」负责人：{task['owner_name']}")
+        data["project"] = project
+        data["tasks"] = tasks
+        data["open_questions"] = list(dict.fromkeys(questions))
+        return data
 
     def get_project_plan_draft(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
         if args.get("draft_id"):

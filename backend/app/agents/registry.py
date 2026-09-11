@@ -153,6 +153,34 @@ _OVERRIDES: dict[str, RegisteredTool] = {
         name="update_project_plan_draft",
         risk_level=ToolRiskLevel.LOW_WRITE,
     ),
+    "validate_project_plan": RegisteredTool(
+        name="validate_project_plan",
+        risk_level=ToolRiskLevel.READ,
+    ),
+    "apply_project_plan": RegisteredTool(
+        name="apply_project_plan",
+        risk_level=ToolRiskLevel.HIGH_WRITE,
+        confirmation_required=True,
+        idempotency_required=True,
+    ),
+    "batch_create_tasks": RegisteredTool(
+        name="batch_create_tasks",
+        risk_level=ToolRiskLevel.MEDIUM_WRITE,
+        idempotency_required=True,
+    ),
+    "batch_update_tasks": RegisteredTool(
+        name="batch_update_tasks",
+        risk_level=ToolRiskLevel.MEDIUM_WRITE,
+        idempotency_required=True,
+    ),
+    "query_entities": RegisteredTool(
+        name="query_entities",
+        risk_level=ToolRiskLevel.READ,
+    ),
+    "batch_find_users": RegisteredTool(
+        name="batch_find_users",
+        risk_level=ToolRiskLevel.READ,
+    ),
     "request_issue_advice": RegisteredTool(
         name="request_issue_advice",
         risk_level=ToolRiskLevel.LOW_WRITE,

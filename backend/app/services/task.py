@@ -48,7 +48,9 @@ class TaskService:
         self.users = UserRepository(db)
         self.audit = AuditService(db)
 
-    def _ensure_owner_exists(self, owner_id: int) -> None:
+    def _ensure_owner_exists(self, owner_id: int | None) -> None:
+        if owner_id is None:
+            return
         owner = self.users.get_by_id(owner_id)
         if owner is None or owner.status != UserStatus.ACTIVE:
             raise OwnerNotFoundError

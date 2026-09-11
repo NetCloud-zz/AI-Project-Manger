@@ -98,6 +98,7 @@ cd frontend && npm install && NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm
 ### 4.3 项目助手
 
 助手可查询、模拟排期、起草计划/变更说明、解释风险。  
+查询与批量写入走结构化工具（`query_entities`、`batch_find_users`、`draft_project_plan` 等），由后端按当前用户权限访问数据库；**不能**生成或执行 SQL。  
 **不能**代替你：发布计划、确认执行变更、关闭风险、代替他人确认通知。
 
 离开对话页时，进行中的生成会尽量停止并释放会话锁；重新进入可停止或继续发送。
@@ -148,6 +149,7 @@ cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 - 工具结果瘦身与脱敏；乐观锁 / 版本冲突。
 - 生成中会话槽位：离开页面 stop / 超时回收。
 - 模型名来自环境变量 `LLM_MODEL_*`，改 `.env` 后需重启 backend/worker。
+- 助手 ReAct 默认可走 AgentScope（`AGENT_RUNTIME`）；与原先差异见 [项目助手接入 AgentScope](AGENTSCOPE_ASSISTANT_RUNTIME.md)。
 
 Agent Skills 见 `mcp/skills/`。
 

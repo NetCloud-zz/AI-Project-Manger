@@ -95,7 +95,10 @@ class Task(TimestampMixin, Base):
     # Free-text work stream (e.g. "Design", "Development", "QA"). The Gantt view groups
     # tasks by this value; unset tasks fall into a trailing "未分组" section.
     work_stream: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    # Optional: L3 tasks may be registered before an owner is chosen; set later.
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True, nullable=True
+    )
     # Optional: L3 execution tasks may be registered before dates are known.
     # Gantt falls back to a single-day / today placeholder when unset.
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)

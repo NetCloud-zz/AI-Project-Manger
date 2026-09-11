@@ -10,13 +10,15 @@ from sqlalchemy import select, update
 from sqlalchemy.engine import Connection, CursorResult, Engine
 from sqlalchemy.orm import Session
 
+from app.agents.management_tools import WRITE_TOOLS
 from app.models.agent_command import AgentCommandItem, AgentCommandPlan
-from app.models.agent_request import AgentRequest
+from app.models.agent_request import AgentRequest, AgentRequestStatus
 from app.models.user import User
 from app.schemas.agent_command import (
     CommandPlanInput,
     CommandRetryInput,
     requires_atomic,
+    source_requirements,
     validate_coverage,
 )
 from app.services.exceptions import DomainValidationError
@@ -43,17 +45,60 @@ PARALLEL_READS = frozenset(
         "get_current_user",
         "list_projects",
         "get_project_progress_overview",
+        "query_entities",
+        "batch_find_users",
+        "find_users",
     }
 )
+
+
+def _resolved_user_by_name(result: dict[str, Any], name: str) -> dict[str, Any]:
+    """Resolve historical name-based refs only within an exact batch-user result.
+
+    Never choose a candidate from ambiguous results or fall back to list order.
+    This also lets failed, persisted plans resume without repeating successful reads.
+    """
+    if not all(isinstance(result.get(key), list) for key in ("resolved", "ambiguous", "not_found")):
+        raise KeyError(name)
+    if name in result["not_found"]:
+        raise KeyError(f"{name}（未匹配到用户）")
+    if any(isinstance(row, dict) and row.get("input") == name for row in result["ambiguous"]):
+        raise KeyError(f"{name}（重名未选定）")
+    matches = [
+        row
+        for row in result["resolved"]
+        if isinstance(row, dict)
+        and (row.get("input") == name or row.get("name") == name)
+        and isinstance(row.get("user_id"), int)
+    ]
+    # Prefer exact input match when both appear.
+    exact = [row for row in matches if row.get("input") == name]
+    pool = exact or matches
+    if len(pool) != 1:
+        raise KeyError(name)
+    return pool[0]
 
 
 def resolve_refs(value: Any, results: dict[str, Any]) -> Any:
     if isinstance(value, dict):
         if "$ref" in value:
-            parts = value["$ref"].split(".")
-            result = results[parts[0]]["data"]
+            parts = str(value["$ref"]).split(".")
+            result: Any = results[parts[0]]["data"]
             for part in parts[1:]:
-                result = result[int(part)] if isinstance(result, list) else result[part]
+                if isinstance(result, list):
+                    result = result[int(part)]
+                    continue
+                if isinstance(result, dict):
+                    if part in result:
+                        result = result[part]
+                    elif part == "id" and "user_id" in result:
+                        result = result["user_id"]
+                    elif part == "user_id" and "id" in result:
+                        result = result["id"]
+                    else:
+                        result = _resolved_user_by_name(result, part)
+                    continue
+                result = result[part]
             return result
         return {k: resolve_refs(v, results) for k, v in value.items()}
     if isinstance(value, list):
@@ -64,6 +109,26 @@ def resolve_refs(value: Any, results: dict[str, Any]) -> Any:
 class CommandService:
     def __init__(self, db: Session):
         self.db = db
+
+    def start(self, request_id: int, source: str, actor: User) -> AgentCommandPlan:
+        request = self.db.get(AgentRequest, request_id)
+        if request is None or request.user_id != actor.id:
+            raise DomainValidationError("执行请求不存在")
+        existing = self.db.scalar(
+            select(AgentCommandPlan).where(AgentCommandPlan.request_id == request_id)
+        )
+        if existing is not None:
+            raise DomainValidationError("请求已有计划，请查看原清单；不会重复执行")
+        plan = AgentCommandPlan(
+            request_id=request_id,
+            source=source,
+            status="PLANNING",
+            expected_count=0,
+            planning_details={"requirements": source_requirements(source), "attempts": []},
+        )
+        self.db.add(plan)
+        self.db.commit()
+        return plan
 
     def owned(self, request_id: int, actor: User) -> AgentCommandPlan:
         request = self.db.get(AgentRequest, request_id)
@@ -85,7 +150,14 @@ class CommandService:
             )
         )
 
-    def create(self, request_id: int, source: str, proposal: CommandPlanInput) -> AgentCommandPlan:
+    def create(
+        self,
+        request_id: int,
+        source: str,
+        proposal: CommandPlanInput,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> AgentCommandPlan:
         from app.agents.management_tools import MANAGEMENT_TOOLS, WRITE_TOOLS
 
         spans = validate_coverage(proposal, source)
@@ -95,21 +167,21 @@ class CommandService:
         for item in proposal.items:
             if item.tool not in known:
                 raise DomainValidationError(f"未知工具：{item.tool}")
-            if (
-                policy == "atomic"
-                and item.tool in WRITE_TOOLS
-                and item.tool not in ATOMIC_TOOLS
-            ):
+            if policy == "atomic" and item.tool in WRITE_TOOLS and item.tool not in ATOMIC_TOOLS:
                 raise DomainValidationError(
                     f"{item.tool} 需要专用业务流程，不支持普通原子批次，未执行任何操作"
                 )
-        plan = AgentCommandPlan(
+        plan = self.db.scalar(
+            select(AgentCommandPlan).where(AgentCommandPlan.request_id == request_id)
+        )
+        if plan is not None and plan.status != "PLANNING":
+            raise DomainValidationError("请求已有执行结果，不能覆盖原计划")
+        plan = plan or AgentCommandPlan(
             request_id=request_id,
             source=source,
-            policy=policy,
-            expected_count=proposal.expected_count,
-            status="READY",
         )
+        plan.policy, plan.expected_count, plan.status = policy, len(proposal.items), "READY"
+        plan.planning_details = details
         self.db.add(plan)
         self.db.flush()
         for index, (item, span) in enumerate(zip(proposal.items, spans, strict=True)):
@@ -132,16 +204,46 @@ class CommandService:
     def snapshot(self, plan: AgentCommandPlan) -> dict[str, Any]:
         items = self.items(plan)
         counts = Counter(item.state for item in items)
+        details = plan.planning_details or {}
+        requirements = details.get("requirements", source_requirements(plan.source))
+        status = plan.status
+        if status == "READY" and items and all(item.state == "SUCCEEDED" for item in items):
+            status = "COMPLETED"
+        if status == "PLANNING":
+            request = self.db.get(AgentRequest, plan.request_id)
+            if request and request.status not in {
+                AgentRequestStatus.ACCEPTED,
+                AgentRequestStatus.RUNNING,
+            }:
+                status = "PLANNING_FAILED"
+        unplanned = status in {"INVALID_PLAN", "NEEDS_INPUT", "PLANNING_FAILED"}
         return {
             "type": "execution_plan",
             "request_id": plan.request_id,
-            "status": plan.status,
+            "status": status,
             "policy": plan.policy,
             "revision": plan.revision,
-            "expected_count": plan.expected_count,
+            "expected_count": len(requirements) if unplanned else plan.expected_count,
             "succeeded": counts["SUCCEEDED"],
-            "remaining": plan.expected_count - counts["SUCCEEDED"],
-            "error": plan.error,
+            "business_succeeded": sum(
+                1 for i in items if i.state == "SUCCEEDED" and i.tool in WRITE_TOOLS
+            ),
+            "remaining": len(requirements)
+            if unplanned
+            else plan.expected_count - counts["SUCCEEDED"],
+            "error": (
+                "清单尚未通过校验，未执行业务操作。请补充或重新整理指令。"
+                if unplanned and not details
+                else plan.error
+            ),
+            "source": plan.source if unplanned else None,
+            "requirements": requirements,
+            "business_item_count": len(requirements),
+            "planned_step_count": len(items),
+            "unplanned": unplanned,
+            "questions": details.get("questions", []),
+            "planning_attempt_count": len(details.get("attempts", [])),
+            "error_code": details.get("error_code"),
             "items": [
                 {
                     "item_id": i.item_id,
@@ -159,8 +261,27 @@ class CommandService:
             ],
         }
 
-    def reject(self, request_id: int, source: str, error: str) -> AgentCommandPlan:
-        plan = AgentCommandPlan(request_id=request_id, source=source, status="INVALID_PLAN", expected_count=0, error=error[:1000])
+    def reject(
+        self,
+        request_id: int,
+        source: str,
+        error: str,
+        *,
+        status: str = "INVALID_PLAN",
+        details: dict[str, Any] | None = None,
+    ) -> AgentCommandPlan:
+        plan = self.db.scalar(
+            select(AgentCommandPlan).where(AgentCommandPlan.request_id == request_id)
+        )
+        if plan is not None and plan.status != "PLANNING":
+            raise DomainValidationError("不能覆盖已有执行清单")
+        plan = plan or AgentCommandPlan(request_id=request_id, source=source)
+        plan.status, plan.expected_count, plan.error = (
+            status,
+            len(source_requirements(source)),
+            error[:1000],
+        )
+        plan.planning_details = details
         self.db.add(plan)
         self.db.commit()
         return plan
@@ -201,6 +322,17 @@ class CommandService:
     async def run(
         self, plan: AgentCommandPlan, actor: User, *, budget: int = 100
     ) -> dict[str, Any]:
+        try:
+            return await self._run(plan, actor, budget=budget)
+        except BaseException:
+            # Do not leave RUNNING committed by the conversation error handler.
+            # Worker receipts commit independently; pending work stays recoverable.
+            self.db.rollback()
+            raise
+
+    async def _run(
+        self, plan: AgentCommandPlan, actor: User, *, budget: int = 100
+    ) -> dict[str, Any]:
         from app.agents.management_tools import WRITE_TOOLS, ManagementToolExecutor
         from app.agents.tool_result import ToolResult
 
@@ -236,6 +368,7 @@ class CommandService:
                 .execution_options(populate_existing=True)
             )
             if request is not None and request.cancel_requested:
+                failed = outer is not None
                 break
             pending = [i for i in rows if i.state == "PENDING"]
             if not pending:
@@ -262,6 +395,26 @@ class CommandService:
             ]
             if not ready:
                 break
+            resolved: dict[str, Any] = {}
+            results = {i.item_id: i.result for i in rows if i.state == "SUCCEEDED"}
+            invalid_reference = False
+            for candidate in ready[: budget - steps]:
+                try:
+                    resolved[candidate.item_id] = resolve_refs(candidate.arguments, results)
+                except (KeyError, IndexError, TypeError, ValueError):
+                    candidate.state = "FAILED"
+                    candidate.result = ToolResult.failure(
+                        "INVALID_ARGUMENTS", "依赖结果缺少引用字段，未执行此项"
+                    ).model_dump(mode="json")
+                    candidate.attempts += 1
+                    steps += 1
+                    invalid_reference = True
+            if invalid_reference:
+                self.db.flush()
+                if outer is not None:
+                    failed = True
+                    break
+                continue
             item = ready[0]
             results = {i.item_id: i.result for i in rows if i.state == "SUCCEEDED"}
             batch: list[AgentCommandItem] = []
@@ -281,7 +434,7 @@ class CommandService:
                         ):
                             break
                         write_batch.append(candidate)
-                await asyncio.gather(
+                await settled_workers(
                     *[
                         asyncio.to_thread(
                             _write,
@@ -290,7 +443,7 @@ class CommandService:
                             plan.request_id,
                             i.id,
                             plan.source,
-                            resolve_refs(i.arguments, results),
+                            resolved[i.item_id],
                         )
                         for i in write_batch
                     ]
@@ -308,11 +461,9 @@ class CommandService:
                 and not any(i.state == "SUCCEEDED" and i.tool in ATOMIC_TOOLS for i in rows)
             ):
                 self.db.flush()
-                values = await asyncio.gather(
+                values = await settled_workers(
                     *[
-                        asyncio.to_thread(
-                            _read, bind, actor.id, i.tool, resolve_refs(i.arguments, results)
-                        )
+                        asyncio.to_thread(_read, bind, actor.id, i.tool, resolved[i.item_id])
                         for i in batch
                     ]
                 )
@@ -398,18 +549,56 @@ class CommandService:
 
 
 def format_execution(snapshot: dict[str, Any]) -> str:
+    from app.agents.stream_events import friendly_tool_name
+
+    items = snapshot.get("items") or []
+    business_ok = snapshot.get("business_succeeded")
+    if business_ok is None:
+        business_ok = sum(
+            1
+            for item in items
+            if item.get("state") == "SUCCEEDED" and item.get("tool") in WRITE_TOOLS
+        )
     lines = [
-        f"指令核对：共 {snapshot['expected_count']} 项，成功 {snapshot['succeeded']} 项，"
+        f"指令核对：共 {snapshot['expected_count']} 项，步骤成功 {snapshot['succeeded']} 项"
+        f"（其中业务写入成功 {business_ok} 项），"
         f"未完成 {snapshot['remaining']} 项（{snapshot['status']}）。"
     ]
-    for item in snapshot["items"]:
-        result = item["result"] or {}
+    for item in items:
+        result = item.get("result") or {}
         error = result.get("error") or {}
+        tool = str(item.get("tool") or "")
+        label = friendly_tool_name(tool) if tool else item.get("item_id")
         lines.append(
-            f"- {item['item_id']} · {item['source_text']}：{item['state']}"
+            f"- {item['item_id']} · {label} · {item['source_text']}：{item['state']}"
             + (f"；{error.get('message', '')}" if error else "")
         )
     return "\n".join(lines)
+
+
+async def settled_workers(*workers: Any) -> list[Any]:
+    """A cancelled HTTP coroutine must not release the plan lock over live writes."""
+    group = asyncio.gather(*workers, return_exceptions=True)
+    try:
+        outcomes = await asyncio.shield(group)
+    except asyncio.CancelledError:
+        await group
+        raise
+    if any(isinstance(outcome, BaseException) for outcome in outcomes):
+        raise DomainValidationError("执行连接中断，请刷新清单核对已完成项，再恢复未执行项")
+    return outcomes
+
+
+def command_error_code(cards: list[dict[str, Any]] | None) -> str | None:
+    """Transport completion is distinct from successful command execution."""
+    for card in reversed(cards or []):
+        if card.get("type") == "execution_plan":
+            if card.get("status") != "COMPLETED":
+                return str(
+                    card.get("error_code") or "COMMAND_" + str(card.get("status", "INCOMPLETE"))
+                )
+            return None
+    return None
 
 
 def _read(bind: Engine | Connection, actor_id: int, tool: str, args: dict[str, Any]) -> Any:
@@ -426,7 +615,14 @@ def _read(bind: Engine | Connection, actor_id: int, tool: str, args: dict[str, A
         return ToolResult.failure("INTERNAL_ERROR", "独立查询失败")
 
 
-def _write(bind: Engine | Connection, actor_id: int, request_id: int, item_id: int, source: str, args: dict[str, Any]) -> None:
+def _write(
+    bind: Engine | Connection,
+    actor_id: int,
+    request_id: int,
+    item_id: int,
+    source: str,
+    args: dict[str, Any],
+) -> None:
     from app.agents.management_tools import ManagementToolExecutor
     from app.agents.tool_result import ToolResult
 

@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.owner_labels import is_pending_owner_label
 from app.core.permissions import (
     can_create_action_item,
     can_create_issue,
@@ -72,6 +73,19 @@ def _parse_date(value: object | None, *, field: str) -> date | None:
     raise DomainValidationError(msg)
 
 
+def _has_owner_hint(args: dict[str, Any]) -> bool:
+    if args.get("owner_id") is not None:
+        return True
+    for key in ("owner_username", "owner_name"):
+        value = args.get(key)
+        if value is None or value == "":
+            continue
+        if key == "owner_name" and is_pending_owner_label(str(value)):
+            continue
+        return True
+    return False
+
+
 def _optional_str(args: dict[str, Any], key: str) -> str | None:
     value = args.get(key)
     if value is None:
@@ -98,7 +112,15 @@ class ManagementWriteService:
         else:
             self.db.flush()
 
-    def find_users(self, *, query: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    def find_users(
+        self,
+        *,
+        query: str | None = None,
+        names: list[str] | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        if names:
+            return self._find_users_by_names(names)
         stmt = select(User).where(User.status == UserStatus.ACTIVE).order_by(User.id)
         if query:
             needle = f"%{query.strip()}%"
@@ -116,6 +138,61 @@ class ManagementWriteService:
             }
             for user in users
         ]
+
+    def _find_users_by_names(self, names: list[str]) -> dict[str, Any]:
+        requested: list[str] = []
+        seen: set[str] = set()
+        for raw in names:
+            name = str(raw or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            requested.append(name)
+        if not requested:
+            return {"resolved": [], "ambiguous": [], "not_found": []}
+        users = list(
+            self.db.scalars(
+                select(User).where(User.status == UserStatus.ACTIVE, User.name.in_(requested))
+            ).all()
+        )
+        by_name: dict[str, list[User]] = {}
+        for user in users:
+            by_name.setdefault(user.name, []).append(user)
+        resolved: list[dict[str, Any]] = []
+        ambiguous: list[dict[str, Any]] = []
+        not_found: list[str] = []
+        for name in requested:
+            matches = by_name.get(name) or []
+            if len(matches) == 1:
+                user = matches[0]
+                resolved.append(
+                    {
+                        "input": name,
+                        "id": user.id,
+                        "user_id": user.id,
+                        "name": user.name,
+                        "username": user.username,
+                        "department": user.department,
+                    }
+                )
+            elif len(matches) > 1:
+                ambiguous.append(
+                    {
+                        "input": name,
+                        "candidates": [
+                            {
+                                "id": user.id,
+                                "user_id": user.id,
+                                "name": user.name,
+                                "username": user.username,
+                            }
+                            for user in matches[:8]
+                        ],
+                    }
+                )
+            else:
+                not_found.append(name)
+        return {"resolved": resolved, "ambiguous": ambiguous, "not_found": not_found}
 
     def resolve_user(
         self,
@@ -194,6 +271,10 @@ class ManagementWriteService:
                 owner_username=_optional_str(args, "owner_username"),
                 owner_name=_optional_str(args, "owner_name"),
             )
+        elif args.get("owner_ids"):
+            # The legacy primary owner must come from the explicit owner set.
+            # Defaulting to the actor would silently add an unrequested owner.
+            owner = self.resolve_user(owner_id=args["owner_ids"][0])
         else:
             owner = actor
 
@@ -284,17 +365,19 @@ class ManagementWriteService:
             raise DomainValidationError(msg)
 
         due = _parse_date(args.get("due_date"), field="due_date")
-        owner = self.resolve_user(
-            owner_id=args.get("owner_id"),
-            owner_username=_optional_str(args, "owner_username"),
-            owner_name=_optional_str(args, "owner_name"),
-        )
+        owner_id: int | None = None
+        if _has_owner_hint(args):
+            owner_id = self.resolve_user(
+                owner_id=args.get("owner_id"),
+                owner_username=_optional_str(args, "owner_username"),
+                owner_name=_optional_str(args, "owner_name"),
+            ).id
         status_raw = _optional_str(args, "status")
         data = TaskCreate(
             **{key: args[key] for key in TaskPlanningFields.model_fields if key in args},
             task_name=task_name,
             work_stream=_optional_str(args, "work_stream"),
-            owner_id=owner.id,
+            owner_id=owner_id,
             due_date=due,
             start_date=_parse_date(args.get("start_date"), field="start_date"),
             progress_percent=args.get("progress_percent"),
@@ -337,12 +420,14 @@ class ManagementWriteService:
             updates["start_date"] = _parse_date(args.get("start_date"), field="start_date")
 
         if any(key in args for key in ("owner_id", "owner_username", "owner_name")):
-            owner = self.resolve_user(
-                owner_id=args.get("owner_id"),
-                owner_username=_optional_str(args, "owner_username"),
-                owner_name=_optional_str(args, "owner_name"),
-            )
-            updates["owner_id"] = owner.id
+            if _has_owner_hint(args):
+                updates["owner_id"] = self.resolve_user(
+                    owner_id=args.get("owner_id"),
+                    owner_username=_optional_str(args, "owner_username"),
+                    owner_name=_optional_str(args, "owner_name"),
+                ).id
+            else:
+                updates["owner_id"] = None
 
         if "due_date" in args:
             parsed = _parse_date(args.get("due_date"), field="due_date")

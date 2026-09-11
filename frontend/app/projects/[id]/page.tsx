@@ -172,7 +172,7 @@ function ProjectDetailInner() {
   const onCreateTask = async (values: {
     task_name: string;
     work_stream?: string;
-    owner_id: number;
+    owner_id?: number | null;
     date_range?: [dayjs.Dayjs, dayjs.Dayjs] | null;
   }) => {
     setSubmitting(true);
@@ -181,7 +181,7 @@ function ProjectDetailInner() {
       await createProjectTask(projectId, {
         task_name: values.task_name,
         work_stream: values.work_stream?.trim() || null,
-        owner_id: values.owner_id,
+        owner_id: values.owner_id ?? null,
         start_date: range?.[0]?.format("YYYY-MM-DD") ?? null,
         due_date: range?.[1]?.format("YYYY-MM-DD") ?? null,
       });
@@ -297,8 +297,12 @@ function ProjectDetailInner() {
                 allowClear
               />
             </Form.Item>
-            <Form.Item label="负责人 ID" name="owner_id" rules={[{ required: true }]}>
-              <InputNumber className="full-width" min={1} placeholder="用户 ID" />
+            <Form.Item
+              label="负责人 ID"
+              name="owner_id"
+              extra="可选；可先创建任务，负责人后续再指派。"
+            >
+              <InputNumber className="full-width" min={1} placeholder="待定（可留空）" />
             </Form.Item>
             <Form.Item
               label="起止日期"
