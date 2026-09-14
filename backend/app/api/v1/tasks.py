@@ -74,7 +74,7 @@ def create_task(
     except DomainValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
     db.commit()
-    return TaskResponse.model_validate(task)
+    return service.to_response(task)
 
 
 @router.get("/projects/{project_id}/tasks", response_model=list[TaskResponse])
@@ -94,9 +94,10 @@ def list_project_tasks(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
-    tasks = TaskService(db).list_project_tasks(project_id)
+    service = TaskService(db)
+    tasks = service.list_project_tasks(project_id)
     tasks = [task for task in tasks if can_view_task(db, current_user, task)]
-    return [TaskResponse.model_validate(item) for item in tasks]
+    return service.to_responses(tasks)
 
 
 @router.get("/tasks/my", response_model=MyTasksPage)
@@ -109,7 +110,8 @@ def list_my_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MyTasksPage:
-    tasks, total = TaskService(db).list_my_tasks_page(
+    service = TaskService(db)
+    tasks, total = service.list_my_tasks_page(
         current_user,
         page=page,
         page_size=page_size,
@@ -118,7 +120,7 @@ def list_my_tasks(
         sort=sort,
     )
     return MyTasksPage(
-        items=[TaskResponse.model_validate(item) for item in tasks],
+        items=service.to_responses(tasks),
         total=total,
         page=page,
         page_size=page_size,
@@ -140,7 +142,7 @@ def get_task(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
-    return TaskResponse.model_validate(task)
+    return service.to_response(task)
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskResponse)
@@ -159,7 +161,7 @@ def update_task(
     project = task.project
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if not can_modify_task_status(current_user, task, project):
+    if not can_modify_task_status(current_user, task, project, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
@@ -189,7 +191,7 @@ def update_task(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Owner not found"
         ) from exc
     db.commit()
-    return TaskResponse.model_validate(updated)
+    return service.to_response(updated)
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -242,11 +244,9 @@ def list_task_branches(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
-    return [
-        TaskResponse.model_validate(item)
-        for item in service.list_branch_siblings(task_id)
-        if can_view_task(db, current_user, item)
-    ]
+    return service.to_responses(
+        [item for item in service.list_branch_siblings(task_id) if can_view_task(db, current_user, item)]
+    )
 
 
 @router.post(
@@ -284,7 +284,7 @@ def create_task_branch(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Owner not found"
         ) from exc
     db.commit()
-    return TaskResponse.model_validate(branch)
+    return service.to_response(branch)
 
 
 @router.post("/tasks/{task_id}/activate-branch", response_model=TaskResponse)
@@ -314,4 +314,4 @@ def activate_task_branch(
     except DomainValidationError as exc:
         raise HTTPException(status_code=400, detail=exc.message) from exc
     db.commit()
-    return TaskResponse.model_validate(updated)
+    return service.to_response(updated)

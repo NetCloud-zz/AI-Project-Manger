@@ -110,6 +110,10 @@ cd frontend && npm install && NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm
 查询与批量写入走结构化工具（`query_entities`、`batch_find_users`、`draft_project_plan` 等），由后端按当前用户权限访问数据库；**不能**生成或执行 SQL。  
 **不能**代替你：发布计划、确认执行变更、关闭风险、代替他人确认通知。
 
+对话输入无需固定模板：自然语言、Markdown、表格及混合排版均交给模型理解。
+编号、项目符号和换行不用于推算任务数量或强制划分执行项；模型需对照完整原文核对任务、阶段、里程碑及字段归属。
+后端校验模型提交的工具参数、权限和业务约束，并核对实际写入结果；执行清单尚未生成时不宣称已确定业务条目数量。
+
 离开对话页时，进行中的生成会尽量停止并释放会话锁；重新进入可停止或继续发送。
 
 ### 4.4 改计划
@@ -161,6 +165,8 @@ cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 - 助手 ReAct 默认可走 AgentScope（`AGENT_RUNTIME`）；与原先差异见 [项目助手接入 AgentScope](AGENTSCOPE_ASSISTANT_RUNTIME.md)。
 
 Agent Skills 见 `mcp/skills/`。
+
+项目助手的待实施架构修复与验收要求见 [项目助手修复方案](ASSISTANT_REPAIR_PLAN.md) 与 [验收操作清单](ASSISTANT_ACCEPTANCE.md)。方案附录描述目标与进度；通过发布门槛前，不得把计划能力写成已发布版本承诺。
 
 ---
 

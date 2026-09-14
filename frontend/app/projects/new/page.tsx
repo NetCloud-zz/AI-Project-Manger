@@ -20,7 +20,7 @@ function NewProjectPageInner() {
   const [submitting, setSubmitting] = useState(false);
 
   const onFinish = async (values: {
-    project_code: string;
+    project_code?: string;
     project_name: string;
     goal?: string;
     target_date?: dayjs.Dayjs;
@@ -29,7 +29,7 @@ function NewProjectPageInner() {
     setSubmitting(true);
     try {
       const project = await createProject({
-        project_code: values.project_code,
+        project_code: values.project_code?.trim() || null,
         project_name: values.project_name,
         goal: values.goal,
         owner_id: user.id,
@@ -62,8 +62,12 @@ function NewProjectPageInner() {
 
       <AppCard>
         <Form layout="vertical" onFinish={onFinish}>
-          <Form.Item label="项目编号" name="project_code" rules={[{ required: true }]}>
-            <Input placeholder="PRJ-1001" />
+          <Form.Item
+            label="项目编号"
+            name="project_code"
+            extra="可留空，系统按当日流水自动生成（如 P20260911-001）"
+          >
+            <Input placeholder="留空则自动生成" />
           </Form.Item>
           <Form.Item label="项目名称" name="project_name" rules={[{ required: true }]}>
             <Input placeholder="输入项目名称" />

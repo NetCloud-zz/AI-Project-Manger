@@ -261,8 +261,8 @@ class ManagementWriteService:
 
         code = _optional_str(args, "project_code")
         name = _optional_str(args, "project_name")
-        if not code or not name:
-            msg = "project_code and project_name are required"
+        if not name:
+            msg = "project_name is required"
             raise DomainValidationError(msg)
 
         if any(key in args and args[key] not in (None, "") for key in _OWNER_KEYS):
@@ -281,7 +281,7 @@ class ManagementWriteService:
         status_raw = _optional_str(args, "status")
         risk_raw = _optional_str(args, "risk_level")
         data = ProjectCreate(
-            project_code=code.upper(),
+            project_code=code,
             project_name=name,
             goal=_optional_str(args, "goal"),
             owner_id=owner.id,
@@ -294,7 +294,7 @@ class ManagementWriteService:
         try:
             project = self.projects.create_project(data, actor=actor)
         except ProjectCodeExistsError as exc:
-            msg = f"Project code already exists: {code.upper()}"
+            msg = f"Project code already exists: {(code or '').upper() or 'auto'}"
             raise DomainValidationError(msg) from exc
         self._commit()
         self.db.refresh(project)
@@ -402,7 +402,7 @@ class ManagementWriteService:
         if project is None:
             raise ProjectNotFoundError
 
-        if not can_modify_task_status(actor, task, project):
+        if not can_modify_task_status(actor, task, project, self.db):
             raise PermissionDeniedError("You cannot modify this task")
 
         updates: dict[str, Any] = {
@@ -514,6 +514,43 @@ class ManagementWriteService:
             if task.start_date is not None and args.get("shift_start", True):
                 payload["start_date"] = (task.start_date + timedelta(days=days)).isoformat()
         return self.update_task(actor, payload)
+
+    def create_milestone(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        from app.schemas.planning import MilestoneInput
+        from app.services.planning import PlanningService
+
+        project = self._resolve_project(
+            project_id=args.get("project_id"),
+            project_code=_optional_str(args, "project_code"),
+        )
+        if not can_modify_project(actor, project, self.db):
+            raise PermissionDeniedError("You cannot create milestones in this project")
+        name = _optional_str(args, "name") or _optional_str(args, "milestone_name")
+        if not name:
+            raise DomainValidationError("name is required")
+        owner_id: int | None = None
+        if _has_owner_hint(args):
+            owner_id = self.resolve_user(
+                owner_id=args.get("owner_id"),
+                owner_username=_optional_str(args, "owner_username"),
+                owner_name=_optional_str(args, "owner_name"),
+            ).id
+        payload = MilestoneInput(
+            name=name,
+            deliverable=_optional_str(args, "deliverable"),
+            acceptance_criteria=_optional_str(args, "acceptance_criteria"),
+            target_date=_parse_date(args.get("target_date"), field="target_date"),
+            owner_id=owner_id,
+            status="PLANNED",
+        )
+        created = PlanningService(self.db).put_milestone(project.id, payload, actor)
+        self._commit()
+        return {
+            "ok": True,
+            "action": "create_milestone",
+            "milestone": created,
+            "project_id": project.id,
+        }
 
     def create_task_branch(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
         task = self.tasks.get_task(int(args["task_id"]))

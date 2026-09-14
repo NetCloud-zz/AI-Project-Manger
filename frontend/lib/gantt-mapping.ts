@@ -1,6 +1,7 @@
 import type { ILink, ITask } from "@svar-ui/react-gantt";
 
 import { ganttBarTypeFor, resolveGanttRisk, resolveGanttStatus } from "@/lib/gantt-status";
+import { taskOwnerLabel } from "@/lib/task-owners";
 import type { TaskLink, TaskLinkType } from "@/types/gantt";
 import type { Task } from "@/types/task";
 
@@ -72,7 +73,7 @@ export function toSvarTask(task: Task, today: Date = new Date(), parent = 0): IT
     progress: task.progress_percent ?? 0,
     type: ganttBarTypeFor(task, today),
     parent,
-    owner: task.owner?.name ?? "",
+    owner: taskOwnerLabel(task),
     owner_id: task.owner_id,
     status: task.status,
     ai_status: task.ai_status,

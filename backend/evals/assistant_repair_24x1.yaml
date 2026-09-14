@@ -1,0 +1,71 @@
+# Desensitized acceptance fixture for assistant repair (24 tasks + 1 milestone).
+# Synthetic names only — do not paste real customer data.
+# Groups: 7 / 6 / 5 / 6 tasks. Expected counts are explicit fixtures, not regex counts.
+
+version: 1
+project_code: PRJ-1001
+project_name: 验收演示项目
+expect:
+  task_count: 24
+  milestone_count: 1
+  group_sizes: [7, 6, 5, 6]
+
+milestone:
+  name: 阶段门禁-M1
+  target_date: "2026-10-31"
+  owner_name: 测试甲
+
+groups:
+  - work_stream: 准备阶段
+    tasks:
+      - { name: 需求澄清, owner_name: 测试甲, collaborator_names: [测试乙], planned_duration_days: 14, start_date: "2026-09-01", due_date: "2026-09-14" }
+      - { name: 范围确认, owner_name: 测试乙, planned_duration_days: 7, start_date: "2026-09-08", due_date: "2026-09-14" }
+      - { name: 资源盘点, owner_name: 测试甲, planned_duration_days: 5 }
+      - { name: 风险登记, owner_name: 待定 }
+      - { name: 沟通机制, owner_name: 测试乙, start_date: "2026-09-01" }
+      - { name: 工具准备, owner_name: 测试甲, planned_duration_days: 3 }
+      - { name: 基线冻结, owner_name: 测试乙, due_date: "2026-09-20" }
+
+  - work_stream: 设计阶段
+    tasks:
+      - { name: 方案起草, owner_name: 测试甲, collaborator_names: [测试乙], planned_duration_days: 21 }
+      - { name: 方案评审, owner_name: 测试乙, planned_duration_days: 7 }
+      - { name: 接口约定, owner_name: 测试甲, planned_duration_days: 14 }
+      - { name: 数据字典, owner_name: 测试乙 }
+      - { name: 原型校对, owner_name: 待定, planned_duration_days: 10 }
+      - { name: 设计归档, owner_name: 测试甲, due_date: "2026-10-05" }
+
+  - work_stream: 实施阶段
+    tasks:
+      - { name: 环境搭建, owner_name: 测试甲, planned_duration_days: 5 }
+      - { name: 核心开发, owner_name: 测试乙, collaborator_names: [测试甲], planned_duration_days: 28 }
+      - { name: 联调准备, owner_name: 测试甲, planned_duration_days: 7 }
+      - { name: 问题跟踪, owner_name: 测试乙 }
+      - { name: 实施纪要, owner_name: 待定 }
+
+  - work_stream: 验收阶段
+    tasks:
+      - { name: 用例编写, owner_name: 测试甲, planned_duration_days: 14 }
+      - { name: 功能验收, owner_name: 测试乙, planned_duration_days: 7 }
+      - { name: 回归验证, owner_name: 测试甲, planned_duration_days: 7 }
+      - { name: 缺陷关闭, owner_name: 测试乙 }
+      - { name: 验收报告, owner_name: 测试甲, due_date: "2026-10-30" }
+      - { name: 移交清单, owner_name: 测试乙, planned_duration_days: 3 }
+
+layouts:
+  - id: markdown
+    description: Markdown list with section headings
+  - id: flattened
+    description: Single-line compressed paste
+  - id: prose
+    description: Natural language paragraphs
+  - id: table
+    description: Pipe table rows
+  - id: json_text
+    description: JSON text pasted as a message body
+
+notes:
+  - Duplicate ordinals in user text must not change fixture task_count.
+  - Ambiguous same-name owners must clarify; fixture uses unique 测试甲/测试乙.
+  - Pending owners remain unassigned.
+  - Milestone must use create_milestone, not batch_create_tasks.

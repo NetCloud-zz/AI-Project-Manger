@@ -68,6 +68,8 @@ class Task(TimestampMixin, Base):
         index=True,
         nullable=False,
     )
+    # Daily sequential business id: T{YYYYMMDD}-001. Nullable only for legacy rows.
+    task_code: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     task_name: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     deliverable: Mapped[str | None] = mapped_column(Text)

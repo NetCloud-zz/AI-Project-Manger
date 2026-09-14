@@ -10,7 +10,6 @@ from app.models.project import ProjectRiskLevel, ProjectStatus
 
 
 class ProjectBase(BaseModel):
-    project_code: str = Field(min_length=2, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     project_name: str = Field(min_length=1, max_length=200)
     goal: str | None = Field(default=None, max_length=5000)
     owner_id: int
@@ -19,10 +18,23 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
+    # Omit or use 待定/自动 → server allocates P{YYYYMMDD}-NNN.
+    project_code: str | None = Field(
+        default=None, min_length=2, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
     status: ProjectStatus = ProjectStatus.ACTIVE
     risk_level: ProjectRiskLevel = ProjectRiskLevel.NORMAL
     # Additional owners; every id in the set (including owner_id) has equal authority.
     owner_ids: list[int] | None = Field(default=None, min_length=1)
+
+    @field_validator("project_code", mode="before")
+    @classmethod
+    def empty_code_as_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class ProjectUpdate(BaseModel):

@@ -36,6 +36,19 @@ class TaskCreate(TaskBase):
     progress_percent: int | None = Field(default=None, ge=0, le=100)
     status: TaskStatus = TaskStatus.TODO
     work_stream: str | None = Field(default=None, max_length=120)
+    # Omit → server allocates T{YYYYMMDD}-NNN.
+    task_code: str | None = Field(
+        default=None, min_length=2, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
+
+    @field_validator("task_code", mode="before")
+    @classmethod
+    def empty_task_code_as_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class TaskUpdate(TaskPlanningFields):
@@ -87,6 +100,7 @@ class TaskResponse(TaskPlanningFields):
 
     id: int
     project_id: int
+    task_code: str | None = None
     task_name: str
     work_stream: str | None
     owner_id: int | None
@@ -105,6 +119,8 @@ class TaskResponse(TaskPlanningFields):
     created_at: datetime
     updated_at: datetime
     owner: TaskOwnerBrief | None = None
+    # Equal owners: primary owner first, then OWNER task_participants.
+    owners: list[TaskOwnerBrief] = Field(default_factory=list)
     project: TaskProjectBrief | None = None
 
 

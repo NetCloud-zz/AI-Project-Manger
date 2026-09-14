@@ -6,10 +6,13 @@ from app.schemas.agent_command import requires_atomic
 from app.services.agent_entities import (
     EntityResolutionError,
     authorization_source,
+    classify_assistant_intent,
     guard_mutation,
     has_mutation_intent,
     is_status_query,
+    resolve_write_authorization,
     should_use_command_plan,
+    writes_authorized,
 )
 
 
@@ -64,11 +67,38 @@ def test_confirmation_inherits_prior_create_intent():
     confirm = "行，就按你说的建好，弄完告诉我在哪里看"
     assert authorization_source(confirm, [prior]) == confirm
     assert has_mutation_intent(confirm) is True
+    from app.services.agent_entities import plan_coverage_source
+
+    assert plan_coverage_source(confirm, [prior]) == prior
     # Weak confirm inherits prior create authorization.
     weak = "可以了"
     assert has_mutation_intent(weak) is False
+    assert writes_authorized(weak, [prior]) is True
     assert authorization_source(weak, [prior]) == prior
+    assert plan_coverage_source(weak, [prior]) == prior
     assert has_mutation_intent(authorization_source(weak, [prior])) is True
+    # Weak confirm alone never authorizes.
+    assert writes_authorized(weak) is False
+    assert resolve_write_authorization(weak) is None
     # Status query never inherits.
     assert authorization_source("到底有没有建好？", [prior]) == "到底有没有建好？"
     assert has_mutation_intent(authorization_source("到底有没有建好？", [prior])) is False
+    assert writes_authorized("到底有没有建好？", [prior]) is False
+    assert classify_assistant_intent("到底有没有建好？") == "status"
+    assert classify_assistant_intent(weak) == "weak_confirmation"
+    assert classify_assistant_intent(prior) == "mutation"
+
+
+def test_confirm_create_n_uses_prior_detail_for_coverage():
+    from app.services.agent_entities import plan_coverage_source
+
+    prior = (
+        "NLRP3项目： # 创建任务 ## 一、药物化学（阶段）\n"
+        "1. **中间体合成（三环）** * 负责人：孙建波 * 时间：2026-08-28 ~ 2026-09-28"
+    )
+    confirm = (
+        "确认创建这 24 条任务，里程碑 Preclinical profile 的 2026-10-06 不需要补到该里程碑上，"
+        "4 个「待定」负责人与 5 个待定日期后续补齐，本次先留空"
+    )
+    assert writes_authorized(confirm, [prior, "重新在处理一次"]) is True
+    assert plan_coverage_source(confirm, [prior, "重新在处理一次"]) == prior

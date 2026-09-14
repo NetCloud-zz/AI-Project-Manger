@@ -21,7 +21,7 @@ class MemberInput(PlanningInput):
 
 class ParticipantInput(PlanningInput):
     user_id: int
-    role: Literal["COLLABORATOR", "WATCHER"] = "COLLABORATOR"
+    role: Literal["COLLABORATOR", "WATCHER", "OWNER"] = "COLLABORATOR"
 
 
 class ParticipantsInput(PlanningInput):

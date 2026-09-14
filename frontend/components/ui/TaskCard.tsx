@@ -25,7 +25,9 @@ export function TaskCard({ task, showUpdateButton = true }: Props) {
     <AppCard as="article" interactive>
       <Link href={`/tasks/${task.id}`}>
         <div className="entity-card__code">
-          {task.project?.project_code ?? `项目 #${task.project_id}`}
+          {task.task_code
+            ? `${task.task_code} · ${task.project?.project_code ?? `项目 #${task.project_id}`}`
+            : (task.project?.project_code ?? `项目 #${task.project_id}`)}
         </div>
         <div className="entity-card__name">
           {task.branch_label ? `[${task.branch_label}] ` : ""}

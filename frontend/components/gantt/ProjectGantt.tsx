@@ -150,7 +150,7 @@ const ZOOM_MAX = 200;
 const ZOOM_STEP = 10;
 
 const HELP_TEXT =
-  "双击「进度」可改百分比，双击「负责人」可换人；拖拽条上进度柄也可调进度。在任务两端拖出连线可创建依赖。任务时间请在任务详情中修改。只读模式下仅可浏览。";
+  "双击「进度」可改百分比，双击「负责人」可换主负责人；多人负责人以顿号并列显示。拖拽条上进度柄也可调进度。在任务两端拖出连线可创建依赖。任务时间请在任务详情中修改。只读模式下仅可浏览。";
 
 function startOfToday(): Date {
   const now = new Date();
@@ -322,7 +322,7 @@ function OwnerEditCell({
   return (
     <span
       className={`gantt-owner-cell${editable ? " is-editable" : ""}`}
-      title={editable ? "双击更换负责人（可清空为待定）" : undefined}
+      title={editable ? "双击更换主负责人（可清空为待定）；多人时仅改第一位" : undefined}
       onDoubleClick={begin}
       onMouseDown={(event) => {
         if (editable) event.stopPropagation();
@@ -522,6 +522,7 @@ export function ProjectGantt({
         applyTaskPatch(taskId, {
           owner_id: ownerId,
           owner: updated.owner ?? picked ?? undefined,
+          owners: updated.owners ?? (updated.owner ? [updated.owner] : []),
         });
       } catch {
         message.error("更换负责人失败");

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -224,6 +224,10 @@ def is_confirmation(source: str) -> bool:
     return bool(_CONFIRMATION.search(source))
 
 
+def is_weak_confirmation(source: str) -> bool:
+    return bool(_WEAK_CONFIRMATION.search(source.strip()))
+
+
 def has_mutation_intent(source: str) -> bool:
     if is_status_query(source):
         return False
@@ -240,26 +244,101 @@ def has_mutation_intent(source: str) -> bool:
     )
 
 
+AssistantIntent = Literal[
+    "mutation",
+    "status",
+    "discussion",
+    "confirmation",
+    "weak_confirmation",
+    "general",
+]
+
+
+def classify_assistant_intent(message: str) -> AssistantIntent:
+    """Route signal only — does not by itself authorize writes."""
+    if is_status_query(message):
+        return "status"
+    if is_weak_confirmation(message) and not has_mutation_intent(message):
+        return "weak_confirmation"
+    if is_confirmation(message) and has_mutation_intent(message):
+        return "confirmation"
+    if has_mutation_intent(message):
+        return "mutation"
+    if _READ_ONLY_INTENT.search(message):
+        return "discussion"
+    if is_confirmation(message):
+        return "confirmation"
+    return "general"
+
+
+def resolve_write_authorization(
+    message: str,
+    prior_user_messages: list[str] | None = None,
+) -> str | None:
+    """Return authorizing text for writes, or None when writes must not run.
+
+    Intent classification selects a path; this function alone decides write
+    authorization. Status and discussion never authorize. Weak confirmations
+    only inherit an earlier mutation turn.
+    """
+    intent = classify_assistant_intent(message)
+    if intent in {"status", "discussion"}:
+        return None
+    if intent in {"mutation", "confirmation"} and has_mutation_intent(message):
+        return message
+    if intent == "weak_confirmation" or (
+        intent == "confirmation" and not has_mutation_intent(message)
+    ):
+        for prior in reversed(prior_user_messages or []):
+            if prior and has_mutation_intent(prior) and not is_status_query(prior):
+                return prior
+        return None
+    if has_mutation_intent(message):
+        return message
+    return None
+
+
 def authorization_source(
     message: str,
     prior_user_messages: list[str] | None = None,
 ) -> str:
-    """Text used by mutation guard / command-plan routing.
+    """Text used by mutation guard / coverage (never invents authorization)."""
+    return resolve_write_authorization(message, prior_user_messages) or message
 
-    Follow-up confirmations inherit write intent from the nearest prior user
-    message that already authorized mutation. Status queries never inherit.
+
+def plan_coverage_source(
+    message: str,
+    prior_user_messages: list[str] | None = None,
+) -> str:
+    """Source used to validate write-step ``source_text`` attribution.
+
+    Confirmations authorize writes but usually omit the original task body.
+    Prefer the richest prior mutation turn so planners can map stage/task quotes
+    onto the earlier create instruction instead of the short confirm sentence.
     """
-    if is_status_query(message):
-        return message
-    if has_mutation_intent(message):
-        return message
-    if prior_user_messages and (
-        is_confirmation(message) or _WEAK_CONFIRMATION.search(message.strip())
-    ):
-        for prior in reversed(prior_user_messages):
-            if prior and has_mutation_intent(prior):
-                return prior
-    return message
+    intent = classify_assistant_intent(message)
+    if intent in {"confirmation", "weak_confirmation"}:
+        candidates: list[str] = []
+        for prior in prior_user_messages or []:
+            if not prior or is_status_query(prior) or not has_mutation_intent(prior):
+                continue
+            # Skip other short confirm phrases; keep detailed create instructions.
+            if (
+                classify_assistant_intent(prior) == "confirmation"
+                and len(prior.strip()) < 160
+            ):
+                continue
+            candidates.append(prior)
+        if candidates:
+            return max(candidates, key=len)
+    return authorization_source(message, prior_user_messages)
+
+
+def writes_authorized(
+    message: str,
+    prior_user_messages: list[str] | None = None,
+) -> bool:
+    return resolve_write_authorization(message, prior_user_messages) is not None
 
 
 def requires_fresh_facts(source: str) -> bool:
@@ -268,9 +347,15 @@ def requires_fresh_facts(source: str) -> bool:
 
 
 def should_use_command_plan(source: str) -> bool:
-    """Durable command executor for writes and multi-step compound instructions."""
+    """Durable command executor for writes and multi-step compound instructions.
+
+    ``source`` is typically ``authorization_source(...)``. Routing uses intent
+    signals on that text; tool RBAC and ``guard_mutation`` still enforce writes.
+    """
     if has_mutation_intent(source):
         return True
+    if is_status_query(source):
+        return False
     verbs = len(re.findall(r"创建|更新|修改|查询|列出|查一下|再建|登记|再查|弄个|建个", source))
     return verbs >= 3
 

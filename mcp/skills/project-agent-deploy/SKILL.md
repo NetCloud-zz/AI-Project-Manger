@@ -10,35 +10,60 @@ description: >-
 ## Safe config
 
 ```bash
-cp .env.example .env
+test -f .env || cp .env.example .env
 # Set JWT_SECRET, POSTGRES_PASSWORD, optional LLM_* / WECOM_* / OA_*
 # Never commit .env
 ```
+
+The repository Compose configuration passes an explicit environment map to
+containers. A variable in the host `.env` is not automatically a container
+variable. `AGENT_RUNTIME`, reasoning/correction rounds, and `COMMAND_PLAN_*`
+are included in that map so Compose deployments can override them.
 
 ## Compose
 
 ```bash
 docker compose up -d --build
 docker compose ps
-curl -sS http://localhost/health
-curl -sS http://localhost/health/ready
+curl -fsS http://localhost/health
+curl -fsS http://localhost/health/ready
 ```
 
-After code changes to backend/frontend images (sources not bind-mounted):
+Use the configured Nginx port when it differs from 80.
+
+Sources are not bind-mounted. Backend, worker and scheduler build from the same
+backend source directory, so shared backend changes require updating all three.
+For a release that also changes the frontend:
 
 ```bash
-docker compose build backend frontend
-docker compose up -d --force-recreate backend frontend
+docker compose build backend frontend worker scheduler
+docker compose up -d --force-recreate --wait backend frontend worker scheduler
 ```
+
+For frontend-only changes, rebuild and recreate only the frontend. After
+container replacement, verify Nginx routing; reload Nginx if it retains old
+upstream addresses. Healthy containers and HTTP 200 verify availability, not
+successful execution of the user's business request.
 
 ## Migrations
 
 ```bash
-cd backend && alembic upgrade head
-# Ensure a single head before upgrading
+docker compose run --rm --no-deps backend alembic heads
+docker compose run --rm --no-deps backend alembic current
 ```
 
-Backup Postgres before upgrade. Downgrade is not a business rollback.
+Use the newly built backend image to inspect migration files and the database
+revision. If an upgrade is required, ensure a single head and back up Postgres
+before applying it, then start the new application containers:
+
+```bash
+docker compose run --rm --no-deps backend alembic upgrade head
+```
+
+These one-off commands require the database to be running. For local development,
+use the configured backend virtualenv and database connection. Application
+rollback should retain compatible schema; migration downgrade does not undo
+business writes.
 
 ## Ops checklist
 

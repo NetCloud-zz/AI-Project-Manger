@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import can_modify_task_core
+from app.models.planning import TaskParticipant
 from app.models.task import Task, TaskStatus
 from app.models.user import User, UserStatus
 from app.repositories.project import ProjectRepository
@@ -18,7 +20,9 @@ from app.schemas.task import (
     TaskBranchCreate,
     TaskCreate,
     TaskDeleteRequest,
+    TaskOwnerBrief,
     TaskPlanningFields,
+    TaskResponse,
     TaskUpdate,
 )
 from app.services.audit import AuditService
@@ -47,6 +51,47 @@ class TaskService:
         self.projects = ProjectRepository(db)
         self.users = UserRepository(db)
         self.audit = AuditService(db)
+
+    def to_response(self, task: Task) -> TaskResponse:
+        return self.to_responses([task])[0]
+
+    def to_responses(self, tasks: list[Task]) -> list[TaskResponse]:
+        """Serialize tasks with equal owners (primary + OWNER participants)."""
+        if not tasks:
+            return []
+        owner_rows = self.db.execute(
+            select(TaskParticipant.task_id, User)
+            .join(User, User.id == TaskParticipant.user_id)
+            .where(
+                TaskParticipant.task_id.in_([task.id for task in tasks]),
+                TaskParticipant.role == "OWNER",
+            )
+            .order_by(TaskParticipant.task_id, User.id)
+        ).all()
+        extra: dict[int, list[User]] = {}
+        for task_id, user in owner_rows:
+            extra.setdefault(int(task_id), []).append(user)
+
+        payloads: list[TaskResponse] = []
+        for task in tasks:
+            base = TaskResponse.model_validate(task)
+            owners: list[TaskOwnerBrief] = []
+            seen: set[int] = set()
+            if task.owner is not None:
+                owners.append(TaskOwnerBrief.model_validate(task.owner))
+                seen.add(task.owner.id)
+            elif task.owner_id is not None:
+                primary = self.users.get_by_id(task.owner_id)
+                if primary is not None:
+                    owners.append(TaskOwnerBrief.model_validate(primary))
+                    seen.add(primary.id)
+            for user in extra.get(task.id, []):
+                if user.id in seen:
+                    continue
+                owners.append(TaskOwnerBrief.model_validate(user))
+                seen.add(user.id)
+            payloads.append(base.model_copy(update={"owners": owners}))
+        return payloads
 
     def _ensure_owner_exists(self, owner_id: int | None) -> None:
         if owner_id is None:
@@ -123,9 +168,20 @@ class TaskService:
         self._validate_date_range(data.start_date, data.due_date)
 
         self._validate_planning(project_id, data.model_dump())
+        from app.services.entity_codes import allocate_task_code, is_blank_or_placeholder_code
+
+        task_code = data.task_code
+        if is_blank_or_placeholder_code(task_code):
+            task_code = allocate_task_code(self.db)
+        else:
+            task_code = str(task_code).strip().upper()
+            existing = self.db.scalar(select(Task).where(Task.task_code == task_code))
+            if existing is not None:
+                raise DomainValidationError(f"Task code already exists: {task_code}")
         task = Task(
             **data.model_dump(include=set(TaskPlanningFields.model_fields)),
             project_id=project_id,
+            task_code=task_code,
             task_name=data.task_name,
             work_stream=_normalize_work_stream(data.work_stream),
             owner_id=data.owner_id,
@@ -378,6 +434,8 @@ class TaskService:
         self._validate_due_date(due_date, project.target_date)
         self._validate_date_range(start_date, due_date)
 
+        from app.services.entity_codes import allocate_task_code
+
         root_id = source.branch_root_id or source.id
         if source.branch_root_id is None:
             source.branch_root_id = source.id
@@ -387,6 +445,7 @@ class TaskService:
 
         branch = Task(
             project_id=source.project_id,
+            task_code=allocate_task_code(self.db),
             task_name=data.task_name,
             work_stream=_normalize_work_stream(data.work_stream) or source.work_stream,
             owner_id=owner_id,

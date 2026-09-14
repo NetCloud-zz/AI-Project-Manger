@@ -10,6 +10,7 @@ import { AppCard } from "@/components/common/AppCard";
 import { SectionTitle } from "@/components/common/SectionTitle";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { TaskStatusTag } from "@/components/project/StatusTags";
+import { taskOwnerLabel } from "@/lib/task-owners";
 import {
   activateTaskBranch,
   createTaskBranch,
@@ -168,7 +169,7 @@ export function TaskBranchesPanel({ task, canManage, onChanged }: Props) {
                 <TaskStatusTag status={branch.status} />
               </div>
               <p className="meta-line">
-                负责人：{branch.owner?.name ?? (branch.owner_id == null ? "待定" : branch.owner_id)}
+                负责人：{taskOwnerLabel(branch) || (branch.owner_id == null ? "待定" : String(branch.owner_id))}
                 {branch.due_date ? ` · 截止 ${branch.due_date}` : ""}
               </p>
               {canManage && !branch.is_active_branch ? (

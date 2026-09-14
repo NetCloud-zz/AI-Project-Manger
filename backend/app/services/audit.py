@@ -77,9 +77,10 @@ class AuditService:
 
     def task_to_dict(self, task: Any) -> dict[str, Any]:
         return {
-            "id": task.id,
-            "project_id": task.project_id,
-            "task_name": task.task_name,
+        "id": task.id,
+        "project_id": task.project_id,
+        "task_code": task.task_code,
+        "task_name": task.task_name,
             **{
                 key: (
                     getattr(task, key).isoformat()

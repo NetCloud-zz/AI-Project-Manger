@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 StreamEventName = Literal[
     "message_start",
+    "heartbeat",
     "delta",
     "tool_start",
     "tool_end",

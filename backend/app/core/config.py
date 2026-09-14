@@ -129,6 +129,13 @@ class Settings(BaseSettings):
     # LLM turns vs per-operation parameter retries. Do not collapse these into one cap.
     AGENT_REASONING_ROUNDS: int = Field(default=20, ge=1, le=50)
     AGENT_TOOL_CORRECTION_ROUNDS: int = Field(default=10, ge=1, le=20)
+    # Command planner budget (query + plan + repair). Not the ordinary ReAct loop.
+    COMMAND_PLAN_MAX_ROUNDS: int = Field(default=6, ge=2, le=20)
+    COMMAND_PLAN_MAX_QUERY_CALLS: int = Field(default=8, ge=0, le=40)
+    COMMAND_PLAN_MAX_REPAIR_ATTEMPTS: int = Field(default=3, ge=1, le=10)
+    COMMAND_PLAN_MAX_SAME_ERROR: int = Field(default=2, ge=1, le=5)
+    # Gray switch for the durable command planner path (new requests only).
+    COMMAND_PLAN_ENABLED: bool = True
 
     # --- WeCom (optional) ---
     WECOM_CORP_ID: str | None = None

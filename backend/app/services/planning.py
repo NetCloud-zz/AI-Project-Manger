@@ -33,13 +33,13 @@ from app.schemas.planning import (
     PlanVersionInput,
     TaskGroupInput,
 )
-from app.schemas.task import TaskResponse
 from app.services.audit import AuditService
 from app.services.exceptions import (
     DomainValidationError,
     PermissionDeniedError,
     ProjectNotFoundError,
 )
+from app.services.task import TaskService
 
 
 def record(row: Any) -> dict[str, Any]:
@@ -151,7 +151,9 @@ class PlanningService:
                 for member in self.rows(ProjectMember, project_id)
                 if full or member.user_id == actor.id
             ],
-            "tasks": [TaskResponse.model_validate(task).model_dump(mode="json") for task in tasks],
+            "tasks": [
+                item.model_dump(mode="json") for item in TaskService(self.db).to_responses(tasks)
+            ],
             "milestones": [record(row) for row in self.rows(Milestone, project_id)] if full else [],
             "task_groups": [record(row) for row in self.rows(TaskGroup, project_id)]
             if full
@@ -201,9 +203,20 @@ class PlanningService:
             if member is None or not member.is_active:
                 raise DomainValidationError("Task participants must be active project members")
         old = self.participants(task_id, actor)
+        explicit_owners = {person.user_id for person in data.participants if person.role == "OWNER"}
+        # Editing协作人/关注人 must not wipe multi-owners unless OWNER rows are sent.
+        preserved_owners = [
+            row for row in old if row.get("role") == "OWNER" and row["user_id"] not in {
+                person.user_id for person in data.participants
+            }
+        ] if not explicit_owners else []
         self.db.execute(delete(TaskParticipant).where(TaskParticipant.task_id == task_id))
         for person in data.participants:
             self.db.add(TaskParticipant(task_id=task_id, **person.model_dump()))
+        for row in preserved_owners:
+            self.db.add(
+                TaskParticipant(task_id=task_id, user_id=int(row["user_id"]), role="OWNER")
+            )
         self.db.flush()
         new = self.participants(task_id, actor)
         self.audit.record(

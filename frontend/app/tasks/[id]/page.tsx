@@ -18,6 +18,7 @@ import { TASK_STATUS_OPTIONS, TaskStatusTag } from "@/components/project/StatusT
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ProgressHistory } from "@/components/task/ProgressHistory";
 import { ApiError } from "@/lib/http";
+import { taskOwnerLabel } from "@/lib/task-owners";
 import { fetchProject } from "@/services/projects";
 import { deleteTask, fetchTask, updateTask } from "@/services/tasks";
 import { fetchTaskProgress } from "@/services/progress";
@@ -229,7 +230,9 @@ function TaskDetailInner() {
       <div className="task-detail-layout">
         <div className="task-detail-layout__sidebar">
           <AppCard stack="sm">
-            <div className="meta-line">负责人 · {task.owner?.name ?? (task.owner_id == null ? "待定" : task.owner_id)}</div>
+            <div className="meta-line">
+              负责人 · {taskOwnerLabel(task) || (task.owner_id == null ? "待定" : String(task.owner_id))}
+            </div>
             {task.branch_label ? (
               <div className="meta-line">
                 分支 · {task.branch_label}

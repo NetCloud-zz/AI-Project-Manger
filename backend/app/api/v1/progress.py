@@ -38,7 +38,7 @@ def submit_progress(
     project = task.project
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if not can_submit_progress(current_user, task, project):
+    if not can_submit_progress(current_user, task, project, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
@@ -91,7 +91,7 @@ def reanalyze_progress(
     except TaskNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
     project = task.project
-    if project is None or not can_submit_progress(current_user, task, project):
+    if project is None or not can_submit_progress(current_user, task, project, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )

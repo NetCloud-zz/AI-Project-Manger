@@ -24,7 +24,7 @@ export interface Project {
 }
 
 export interface ProjectCreateInput {
-  project_code: string;
+  project_code?: string | null;
   project_name: string;
   goal?: string | null;
   owner_id: number;

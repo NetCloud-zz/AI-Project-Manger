@@ -183,6 +183,7 @@ class ManagementAgent:
         if (
             agent_request_id is not None
             and allow_writes
+            and self._settings.COMMAND_PLAN_ENABLED
             and should_use_command_plan(
                 authorization_source(message, _prior_user_texts(context_messages))
             )
@@ -338,6 +339,7 @@ class ManagementAgent:
         if (
             agent_request_id is not None
             and allow_writes
+            and self._settings.COMMAND_PLAN_ENABLED
             and should_use_command_plan(
                 authorization_source(message, _prior_user_texts(context_messages))
             )

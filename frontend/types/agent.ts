@@ -10,6 +10,7 @@ export type MessageStatus =
 
 export type AgentStreamEventName =
   | "message_start"
+  | "heartbeat"
   | "delta"
   | "tool_start"
   | "tool_end"
@@ -37,6 +38,18 @@ export interface CommandPlan {
   succeeded: number;
   /** Write-tool successes only; query steps are excluded. */
   business_succeeded?: number;
+  /** Actual tasks persisted by batch_create_tasks (not step count). */
+  created_task_count?: number;
+  created_milestone_count?: number;
+  needs_review?: boolean;
+  phase?: string | null;
+  facts_count?: number;
+  recovery?: {
+    recoverable?: boolean;
+    action?: string | null;
+    hint?: string | null;
+    item_ids?: string[];
+  };
   remaining: number;
   error?: string | null;
   error_code?: string | null;
@@ -45,7 +58,7 @@ export interface CommandPlan {
   business_item_count?: number;
   planned_step_count?: number;
   questions?: string[];
-  requirements?: Array<{ requirement_id: string; text: string }>;
+  requirements?: Array<{ requirement_id: string; text?: string; kind?: string }>;
   items: Array<{
     item_id: string;
     tool?: string;

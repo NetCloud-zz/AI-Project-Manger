@@ -360,8 +360,14 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
     ToolDefinition(
         name="batch_create_tasks",
         description=(
-            "Create many tasks in one transaction. Validate all owners first; any "
-            "invalid item rolls back the batch. Pass operation_id + client_item_id "
+            "Create many tasks in one transaction. Validate owners and collaborators "
+            "first; any invalid item rolls back the batch. Supports work_stream, dates, "
+            "planned_duration_days, owner_names (multi-owner) and collaborator_names. "
+            "When the user lists people without distinguishing 负责人 vs 协作人, put all "
+            "in owner_names / owner_name (owners may be multiple). Use collaborator_* "
+            "only when the user explicitly names 协作人/协助人. `tasks` is accepted as an "
+            "alias for `items`. Milestones/dependencies are not supported here — use "
+            "create_milestone or draft_project_plan. Pass operation_id + client_item_id "
             "for idempotent retry of FAILED/PENDING items only."
         ),
         parameters={
@@ -379,17 +385,66 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
                         "properties": {
                             "client_item_id": {"type": "string"},
                             "task_name": {"type": "string"},
-                            "owner_name": {"type": "string"},
+                            "owner_name": {
+                                "type": "string",
+                                "description": (
+                                    "Owner display name; multiple people may be joined with "
+                                    "、 or commas and all become owners when 协作人 is not "
+                                    "distinguished"
+                                ),
+                            },
+                            "owner_names": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Equal task owners (负责人可多人)",
+                            },
+                            "owners": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Alias for owner_names",
+                            },
                             "owner_id": {"type": "integer"},
+                            "owner_ids": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "description": "Equal task owner user ids; first is primary",
+                            },
+                            "collaborator_names": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Collaborators (协作人) only when user explicitly "
+                                    "distinguishes them from owners"
+                                ),
+                            },
+                            "collaborator_ids": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                            },
                             "work_stream": {"type": "string"},
                             "start_date": {"type": "string"},
                             "due_date": {"type": "string"},
+                            "planned_duration_days": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "Planned duration in calendar days when stated",
+                            },
+                            "description": {"type": "string"},
+                            "deliverable": {"type": "string"},
+                            "acceptance_criteria": {"type": "string"},
                         },
                         "required": ["client_item_id", "task_name"],
                     },
                 },
+                "tasks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "description": "Alias for items (same object shape)",
+                    "items": {"type": "object"},
+                },
             },
-            "required": ["items"],
+            "required": [],
         },
     ),
     ToolDefinition(
@@ -426,16 +481,20 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
     ToolDefinition(
         name="create_project",
         description=(
-            "Create a new project. Requires project_code, project_name, and an owner "
-            "(owner_id / owner_username / owner_name). "
-            "Optional: goal, start_date, target_date, owner_ids, status, risk_level."
+            "Create a new project. Requires project_name. project_code is optional — "
+            "when omitted the server assigns P{YYYYMMDD}-NNN (business timezone date). "
+            "Owner may be owner_id / owner_username / owner_name / owner_ids, else the actor. "
+            "Optional: goal, start_date, target_date, status, risk_level."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "project_code": {
                     "type": "string",
-                    "description": "Unique code, e.g. PRJ-2001",
+                    "description": (
+                        "Optional unique code. Omit or use 待定/自动 to auto-assign "
+                        "P{YYYYMMDD}-001 style codes."
+                    ),
                 },
                 "project_name": {"type": "string"},
                 "goal": {"type": "string"},
@@ -463,7 +522,7 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
                 "start_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
                 **_OWNER_PROPS,
             },
-            "required": ["project_code", "project_name"],
+            "required": ["project_name"],
         },
     ),
     ToolDefinition(
@@ -547,6 +606,30 @@ MANAGEMENT_TOOLS: list[ToolDefinition] = [
                 **_OWNER_PROPS,
             },
             "required": ["task_name"],
+        },
+    ),
+    ToolDefinition(
+        name="create_milestone",
+        description=(
+            "Create a project milestone (not an execution task). Use for named stage gates "
+            "with optional target_date / owner. Do not put is_milestone into batch_create_tasks."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "integer"},
+                "project_code": {"type": "string"},
+                "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                "milestone_name": {
+                    "type": "string",
+                    "description": "Alias for name",
+                },
+                "target_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
+                "deliverable": {"type": ["string", "null"]},
+                "acceptance_criteria": {"type": ["string", "null"]},
+                **_OWNER_PROPS,
+            },
+            "required": [],
         },
     ),
     ToolDefinition(
@@ -892,7 +975,10 @@ _DRAFT_PLAN = {
         "project": {
             "type": "object",
             "properties": {
-                "project_code": {"type": "string", "description": "Unique code, e.g. PRJ-2001"},
+                "project_code": {
+                    "type": "string",
+                    "description": "Optional unique code; omit to auto-assign P{YYYYMMDD}-NNN",
+                },
                 "project_name": {"type": "string"},
                 "goal": {"type": "string"},
                 "owner_id": {"type": "integer"},
@@ -901,7 +987,7 @@ _DRAFT_PLAN = {
                 "start_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
                 "target_date": {"type": ["string", "null"], "description": "YYYY-MM-DD"},
             },
-            "required": ["project_code", "project_name"],
+            "required": ["project_name"],
         },
         "tasks": {
             "type": "array",
@@ -1392,6 +1478,7 @@ WRITE_TOOLS = frozenset(
         "update_project",
         "create_task",
         "update_task",
+        "create_milestone",
         "assign_task",
         "change_task_status",
         "reschedule_task",
@@ -1857,6 +1944,8 @@ class ManagementToolExecutor:
             return self._write.update_project(actor, args)
         if name == "create_task":
             return self._write.create_task(actor, args)
+        if name == "create_milestone":
+            return self._write.create_milestone(actor, args)
         if name == "update_task":
             return self._write.update_task(actor, args)
         if name == "assign_task":

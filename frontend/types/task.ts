@@ -33,6 +33,8 @@ export interface Task extends TaskPlanningFields {
   branch_option_id?: number | null;
   id: number;
   project_id: number;
+  /** Daily business id T{YYYYMMDD}-NNN; may be null on legacy rows. */
+  task_code?: string | null;
   task_name: string;
   /** Work stream / phase used to group rows in the Gantt view. */
   work_stream: string | null;
@@ -51,6 +53,8 @@ export interface Task extends TaskPlanningFields {
   created_at: string;
   updated_at: string;
   owner?: TaskOwnerBrief | null;
+  /** Equal owners: primary first, then OWNER participants. */
+  owners?: TaskOwnerBrief[];
   project?: TaskProjectBrief | null;
 }
 

@@ -24,7 +24,7 @@ from app.models.task import Task
 from app.models.user import User, UserRole
 from app.schemas.agent import MessageCreate
 from app.schemas.agent_command import CommandPlanInput, CommandRetryInput, validate_coverage
-from app.services.agent_commands import CommandService, command_error_code
+from app.services.agent_commands import CommandService, command_error_code, format_execution
 from app.services.agent_idempotency import begin_request
 from app.services.conversation import ConversationService
 from app.services.exceptions import DomainValidationError
@@ -149,7 +149,8 @@ async def test_failed_plan_keeps_evidence_without_developer_errors(db, actor):
     plan = service.owned(request.id, actor)
     snapshot = service.snapshot(plan)
     assert plan.status == "INVALID_PLAN"
-    assert snapshot["business_item_count"] == snapshot["remaining"] == 3
+    assert snapshot["business_item_count"] == snapshot["remaining"] == 0
+    assert snapshot["source"] == source
     assert snapshot["planned_step_count"] == 0
     assert len(plan.planning_details["attempts"]) == 2
     assert db.scalar(select(func.count()).select_from(Task)) == 0
@@ -160,7 +161,7 @@ async def test_failed_plan_keeps_evidence_without_developer_errors(db, actor):
 
 
 @pytest.mark.asyncio
-async def test_explicit_unknown_owners_preserved_without_model_or_writes(db, actor):
+async def test_project_owner_text_reaches_model_without_format_preflight(db, actor):
     request, _, _ = setup(db, actor, 25)
     source = "按以下内容创建：\n项目：综合交付项目\n负责人：待填写\n" + "\n".join(
         f"{i}. 任务{i} —— 负责人待定 —— 日期待定" for i in range(25)
@@ -169,11 +170,11 @@ async def test_explicit_unknown_owners_preserved_without_model_or_writes(db, act
     await collect(db, actor, request, source, gateway)
     service = CommandService(db)
     snapshot = service.snapshot(service.owned(request.id, actor))
-    assert snapshot["status"] == "NEEDS_INPUT"
-    assert snapshot["business_item_count"] == 25
-    assert len(snapshot["questions"]) == 2
-    assert "请补充项目负责人" in snapshot["questions"]
-    assert not gateway.calls
+    assert snapshot["status"] == "INVALID_PLAN"
+    assert snapshot["business_item_count"] == 0
+    assert snapshot["source"] == source
+    assert gateway.calls
+    assert any(m.role == "user" and m.content == source for m in gateway.calls[0])
     assert db.scalar(select(func.count()).select_from(Task)) == 0
 
 
@@ -186,12 +187,86 @@ async def test_model_timeout_is_terminal_and_sanitized(db, actor):
     assert "secret diagnostic" not in str([e.data for e in events])
 
 
-def test_whole_source_quote_cannot_hide_missing_or_duplicate_rows(db, actor):
+@pytest.mark.asyncio
+async def test_timeout_retries_then_succeeds(db, actor):
+    request, source, items = setup(db, actor)
+    gateway = Gateway(TimeoutError(), {"items": items})
+    await collect(db, actor, request, source, gateway)
+    plan = CommandService(db).owned(request.id, actor)
+    assert plan.status == "COMPLETED"
+    assert len(gateway.calls) == 2
+    assert db.scalar(select(func.count()).select_from(Task)) == 3
+
+
+def test_whitespace_tolerant_source_text_mapping(db, actor):
+    _, source, items = setup(db, actor)
+    items[0]["source_text"] = "创建任务\nQA-0"
+    assert "创建任务 QA-0" in source or "创建任务 QA-0" in source.replace("\n", " ")
+    # Exact line in setup is "创建任务 QA-0" without newline between 任务 and QA
+    items[0]["source_text"] = "创建任务  QA-0"
+    spans = validate_coverage(CommandPlanInput(items=items), source)
+    assert spans[0][0] >= 0
+
+
+def test_create_project_query_only_plan_rejected(db, actor):
+    source = (
+        "请创建项目： 项目名称：DEMO 项目 目标：演示 "
+        "负责人：示例甲 开始：2026-08-13 目标完成：2026-10-06"
+    )
+    items = [
+        {
+            "item_id": "owners",
+            "tool": "batch_find_users",
+            "source_text": "负责人：示例甲",
+            "arguments": {"names": ["示例甲"]},
+        },
+        {
+            "item_id": "existing",
+            "tool": "list_projects",
+            "source_text": "请创建项目： 项目名称：DEMO 项目",
+            "arguments": {},
+        },
+    ]
+    with pytest.raises(ValueError, match="create_project"):
+        validate_coverage(CommandPlanInput(items=items), source)
+
+
+def test_flattened_task_quote_with_newlines_in_model_output():
+    source = (
+        "然后创建任务： 一、药物化学（阶段） "
+        "1. 中间体合成（三环） —— 示例甲 —— 2026-08-28 ~ 2026-09-28 "
+        "2. OPS-26510 —— 示例乙 —— 2026-08-13 ~ 2026-08-30"
+    )
+    items = [
+        {
+            "item_id": "owners",
+            "tool": "batch_find_users",
+            "source_text": "一、药物化学（阶段）\n1. 中间体合成（三环） —— 示例甲 —— 2026-08-28 ~ 2026-09-28",
+            "arguments": {"names": ["示例甲", "示例乙"]},
+        },
+        {
+            "item_id": "batch",
+            "tool": "batch_create_tasks",
+            "source_text": source,
+            "depends_on": ["owners"],
+            "arguments": {
+                "project_code": "DEMO",
+                "tasks": [
+                    {"task_name": "中间体合成（三环）", "owner_name": "示例甲"},
+                    {"task_name": "OPS-26510", "owner_name": "示例乙"},
+                ],
+            },
+        },
+    ]
+    spans = validate_coverage(CommandPlanInput(items=items), source)
+    assert len(spans) == 2
+
+
+def test_shared_source_can_authorize_distinct_tasks(db, actor):
     _, source, items = setup(db, actor)
     for item in items:
         item["source_text"] = source
-    with pytest.raises(ValueError, match="独立执行项"):
-        validate_coverage(CommandPlanInput(items=items), source)
+    assert len(validate_coverage(CommandPlanInput(items=items), source)) == 3
 
 
 def test_cycles_and_invalid_dependencies_remain_rejected(db, actor):
@@ -335,7 +410,8 @@ def test_failure_legacy_card_is_readable_without_raw_exception(db, actor):
     db.add(plan)
     db.commit()
     result = CommandService(db).snapshot(plan)
-    assert result["business_item_count"] == result["remaining"] == 3
+    assert result["business_item_count"] == result["remaining"] == 0
+    assert result["source"] == source
     assert result["source"] == source
     assert "pydantic" not in result["error"]
 
@@ -394,15 +470,28 @@ async def test_plan_api_ownership_and_invalid_retry(db, actor):
     request, source, items = setup(db, actor)
     await collect(db, actor, request, source, Gateway({"items": items[:1]}))
     app = create_app()
-    app.dependency_overrides[get_db] = lambda: db
+
+    def override_db():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_current_user] = lambda: actor
+    # Explicit timeout + generator override: avoids ASGI/session hangs seen with
+    # bare `lambda: db` overrides and unbounded client waits.
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+        timeout=10.0,
     ) as client:
         result = await client.get(f"/api/v1/agent/requests/{request.id}/plan")
         assert result.status_code == 200
-        assert result.json()["source"] == source
-        assert "attempts" not in result.json()
+        body = result.json()
+        assert body["source"] == source
+        assert "attempts" not in body
+        assert "recovery" in body
         retry = await client.post(
             f"/api/v1/agent/requests/{request.id}/plan/retry",
             json={"expected_revision": 1, "item_ids": ["t0"]},
@@ -411,3 +500,292 @@ async def test_plan_api_ownership_and_invalid_retry(db, actor):
         other = User(id=999, name="Other", username="other", role=UserRole.ADMIN)
         app.dependency_overrides[get_current_user] = lambda: other
         assert (await client.get(f"/api/v1/agent/requests/{request.id}/plan")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_stringified_items_execute_once(db, actor):
+    import json
+
+    request, source, items = setup(db, actor)
+    gateway = Gateway({"items": json.dumps(items)})
+    await collect(db, actor, request, source, gateway)
+    assert len(gateway.calls) == 1
+    assert db.scalar(select(func.count()).select_from(Task)) == 3
+    assert db.get(AgentRequest, request.id).heartbeat_at is not None
+
+
+@pytest.mark.parametrize("encoded", ["{}", "null", "[]", '[{"tool":"create_task"}]', "broken"])
+def test_stringified_invalid_items_still_rejected(encoded):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        CommandPlanInput.model_validate({"items": encoded})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("layout", ["markdown", "flattened", "prose", "table", "json"])
+@pytest.mark.parametrize("batched", [False, True])
+async def test_free_form_bulk_input_reaches_model_unchanged_and_plans(db, actor, layout, batched):
+    import json
+
+    request, _, items = setup(db, actor, 25)
+    blocks = [
+        f"{i % 7 + 1}. **创建任务 QA-{i}**\n"
+        "  * 负责人：待定\n  * 协作人：待定\n"
+        "  * 时间：待定\n  * 计划周期：28 天"
+        for i in range(25)
+    ]
+    if layout in {"markdown", "flattened"}:
+        source = "该项目下： # 创建任务\n## 一、交付（阶段）\n" + "\n".join(blocks)
+        if layout == "flattened":
+            source = source.replace("\n", " ")
+    elif layout == "prose":
+        source = "请在该项目下" + "，然后".join(
+            f"创建任务 QA-{i}，负责人和日期待定" for i in range(25)
+        )
+    elif layout == "table":
+        source = "创建任务\n| 工作内容 | 负责人 | 日期 |\n|---|---|---|\n" + "\n".join(
+            f"| 创建任务 QA-{i} | 待定 | 待定 |" for i in range(25)
+        )
+    else:
+        source = json.dumps(
+            {
+                "指令": "创建任务",
+                "内容": [{"任务": f"创建任务 QA-{i}", "负责人": "待定"} for i in range(25)],
+            },
+            ensure_ascii=False,
+        )
+    for item in items:
+        item["arguments"].pop("owner_id")
+    if batched:
+        items = [
+            {
+                "item_id": "batch",
+                "tool": "batch_create_tasks",
+                "source_text": source,
+                "arguments": {
+                    "project_id": items[0]["arguments"]["project_id"],
+                    "operation_id": "qa-free-form-batch",
+                    "items": [
+                        {
+                            "client_item_id": item["item_id"],
+                            "task_name": item["arguments"]["task_name"],
+                        }
+                        for item in items
+                    ],
+                },
+            }
+        ]
+    gateway = Gateway({"items": items})
+    events = await collect(db, actor, request, source, gateway)
+    assert any(m.role == "user" and m.content == source for m in gateway.calls[0])
+    assert len(gateway.calls) == 1
+    ready = next(e.data for e in events if e.event == "card" and e.data["status"] == "READY")
+    if batched:
+        assert len(ready["items"]) == 1
+        assert len(ready["items"][0]["arguments"]["items"]) == 25
+        # SQLite intentionally refuses specialized batch execution; planning
+        # must succeed, and this storage limitation must remain explicit.
+        service = CommandService(db)
+        step = service.items(service.owned(request.id, actor))[0]
+        assert step.result["error"]["code"] == "PLAN_REQUIRED"
+        assert db.scalar(select(func.count()).select_from(Task)) == 0
+        return
+    assert CommandService(db).owned(request.id, actor).status == "COMPLETED"
+    assert db.scalar(select(func.count()).select_from(Task)) == 25
+
+
+@pytest.mark.asyncio
+async def test_silent_planning_ticks_close_gateway():
+    import asyncio
+    from contextlib import aclosing
+
+    from app.agents.command_agent import planning_ticks
+
+    closed = asyncio.Event()
+
+    async def silent():
+        try:
+            await asyncio.Event().wait()
+            yield StreamDelta()
+        finally:
+            closed.set()
+
+    async with aclosing(planning_ticks(silent(), interval=0.01)) as ticks:
+        assert await anext(ticks) is None
+        assert await asyncio.wait_for(anext(ticks), timeout=1) is None
+    assert closed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_disconnect_during_planning_is_terminal(db, actor):
+    from contextlib import aclosing
+
+    request, source, items = setup(db, actor)
+    async with aclosing(
+        command_stream(
+            db, Gateway({"items": items}), Settings(_env_file=None), source, actor, request.id
+        )
+    ) as stream:
+        assert (await anext(stream)).event == "heartbeat"
+    plan = CommandService(db).owned(request.id, actor)
+    assert plan.status == "PLANNING_FAILED"
+    assert plan.planning_details["error_code"] == "COMMAND_INTERRUPTED"
+    assert db.scalar(select(func.count()).select_from(Task)) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancel_silent_planning_closes_model_and_records_failure(db, actor):
+    import asyncio
+
+    entered, closed = asyncio.Event(), asyncio.Event()
+
+    class SilentGateway:
+        async def chat_with_tools_stream(self, **kwargs):
+            try:
+                entered.set()
+                await asyncio.Event().wait()
+                yield StreamDelta()
+            finally:
+                closed.set()
+
+    request, source, _ = setup(db, actor)
+    running = asyncio.create_task(collect(db, actor, request, source, SilentGateway()))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    assert db.get(AgentRequest, request.id).heartbeat_at is not None
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    assert closed.is_set()
+    assert CommandService(db).owned(request.id, actor).status == "PLANNING_FAILED"
+    assert db.scalar(select(func.count()).select_from(Task)) == 0
+
+
+def test_stringified_candidate_secrets_are_sanitized():
+    import json
+
+    from app.agents.command_agent import safe_candidate
+
+    candidate = {"items": json.dumps([{"arguments": {"password": "hidden", "task_name": "QA"}}])}
+    assert safe_candidate(candidate) == {"items": [{"arguments": {"task_name": "QA"}}]}
+
+
+def test_auxiliary_query_soft_source_mapping_does_not_block_plan():
+    source = (
+        "在项目 PRJ-1001 中创建任务：\n"
+        "1. 方案评审 —— 负责人 测试甲 —— 协作 测试乙 —— 工期 5 天\n"
+        "2. 实施推进 —— 负责人 测试乙"
+    )
+    items = [
+        {
+            "item_id": "owners",
+            "tool": "batch_find_users",
+            # Scattered summary that is not a contiguous quote of the source.
+            "source_text": "核对负责人：测试甲、测试乙",
+            "arguments": {"names": ["测试甲", "测试乙"]},
+        },
+        {
+            "item_id": "batch",
+            "tool": "batch_create_tasks",
+            "source_text": source,
+            "depends_on": ["owners"],
+            "arguments": {
+                "project_code": "PRJ-1001",
+                "items": [
+                    {
+                        "client_item_id": "t1",
+                        "task_name": "方案评审",
+                        "owner_name": "测试甲",
+                        "collaborator_names": ["测试乙"],
+                        "planned_duration_days": 5,
+                    },
+                    {
+                        "client_item_id": "t2",
+                        "task_name": "实施推进",
+                        "owner_name": "测试乙",
+                    },
+                ],
+            },
+        },
+    ]
+    spans = validate_coverage(CommandPlanInput(items=items), source)
+    # Soft unresolved (0,0) or a located name fragment — either must not block the plan.
+    assert spans[0][1] >= spans[0][0]
+    assert spans[1][1] > spans[1][0]
+
+
+def test_write_step_still_requires_authorizing_source_quote():
+    source = "创建任务：方案评审 —— 测试甲"
+    items = [
+        {
+            "item_id": "batch",
+            "tool": "batch_create_tasks",
+            "source_text": "完全无关的授权文本",
+            "arguments": {
+                "project_code": "PRJ-1001",
+                "items": [
+                    {
+                        "client_item_id": "t1",
+                        "task_name": "方案评审",
+                        "owner_name": "测试甲",
+                    }
+                ],
+            },
+        }
+    ]
+    with pytest.raises(ValueError, match="原文映射不匹配"):
+        validate_coverage(CommandPlanInput(items=items), source)
+
+
+def test_format_execution_distinguishes_steps_and_created_tasks():
+    summary = format_execution(
+        {
+            "expected_count": 2,
+            "succeeded": 2,
+            "business_succeeded": 1,
+            "created_task_count": 3,
+            "status": "COMPLETED",
+            "items": [
+                {
+                    "item_id": "owners",
+                    "tool": "batch_find_users",
+                    "source_text": "核对人员",
+                    "state": "SUCCEEDED",
+                    "result": {},
+                },
+                {
+                    "item_id": "batch",
+                    "tool": "batch_create_tasks",
+                    "source_text": "创建任务",
+                    "state": "SUCCEEDED",
+                    "result": {"data": {"created_task_count": 3}},
+                },
+            ],
+        }
+    )
+    assert "执行步骤" in summary
+    assert "业务写入步骤成功 1" in summary
+    assert "实际创建任务 3 个" in summary
+
+
+def test_format_execution_softens_source_mapping_errors_when_unplanned():
+    write_summary = format_execution(
+        {
+            "unplanned": True,
+            "error": "tasks_med_chem 的原文映射不匹配（写入步骤必须能对上用户授权原文）",
+            "items": [],
+        }
+    )
+    assert "原文映射" not in write_summary
+    assert "再次确认创建" in write_summary
+
+    aux_summary = format_execution(
+        {
+            "unplanned": True,
+            "error": "owners 的原文映射不匹配",
+            "items": [],
+        }
+    )
+    assert "原文映射" not in aux_summary
+    assert "任务尚未创建" in aux_summary
+    assert "无需为了内部字段改写清单" in aux_summary

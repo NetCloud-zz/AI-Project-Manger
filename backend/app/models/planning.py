@@ -48,7 +48,9 @@ class TaskParticipant(TimestampMixin, Base):
     )
     role: Mapped[str] = mapped_column(String(20), default="COLLABORATOR")
     __table_args__ = (
-        CheckConstraint("role IN ('COLLABORATOR', 'WATCHER')", name="ck_participant_role"),
+        CheckConstraint(
+            "role IN ('COLLABORATOR', 'WATCHER', 'OWNER')", name="ck_participant_role"
+        ),
     )
 
 

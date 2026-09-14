@@ -89,8 +89,11 @@ class ProjectService:
         actor: User,
         ip_address: str | None = None,
     ) -> Project:
+        from app.services.entity_codes import resolve_project_code
+
         self._validate_create(data, actor)
-        if self.repo.get_by_code(data.project_code):
+        project_code = resolve_project_code(self.db, data.project_code)
+        if self.repo.get_by_code(project_code):
             raise ProjectCodeExistsError
         self._validate_date_range(data.start_date, data.target_date)
 
@@ -99,7 +102,7 @@ class ProjectService:
             owner_ids.append(data.owner_id)
 
         project = Project(
-            project_code=data.project_code,
+            project_code=project_code,
             project_name=data.project_name,
             goal=data.goal,
             owner_id=data.owner_id,

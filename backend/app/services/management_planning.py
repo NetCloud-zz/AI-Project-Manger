@@ -867,7 +867,7 @@ class ManagementPlanningService:
         issue = self.db.get(Issue, int(args["issue_id"]))
         if issue is None or not can_view_issue(self.db, actor, issue):
             raise DomainValidationError("问题不存在或你无权查看")
-        if not can_request_issue_advice(actor, issue):
+        if not can_request_issue_advice(actor, issue, self.db):
             raise PermissionDeniedError("你不能为该问题请求建议")
         run = AIRunService(self.db).create_queued(
             run_type=AIRunType.ISSUE_ADVICE,
@@ -902,7 +902,7 @@ class ManagementPlanningService:
         if task is None or not can_view_task(self.db, actor, task):
             raise TaskNotFoundError
         project = task.project
-        if project is None or not can_submit_progress(actor, task, project):
+        if project is None or not can_submit_progress(actor, task, project, self.db):
             raise PermissionDeniedError("你不能为该任务提交进度")
         content = str(args.get("content") or "").strip()
         if len(content) < 2:

@@ -370,7 +370,7 @@ class AdviceService:
         if issue is None:
             raise IssueNotFoundError
         # Whoever may ask for advice on this issue may also decide on it.
-        if not can_request_issue_advice(actor, issue):
+        if not can_request_issue_advice(actor, issue, self.db):
             raise PermissionDeniedError(
                 "只有管理员、项目负责人、问题登记人或任务负责人可以处置建议"
             )

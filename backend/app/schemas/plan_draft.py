@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.models.task import TaskLinkType
 from app.schemas.planning import PlanningInput
@@ -52,7 +52,9 @@ class DraftLink(PlanningInput):
 
 
 class DraftProject(PlanningInput):
-    project_code: str = Field(min_length=2, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    project_code: str | None = Field(
+        default=None, min_length=2, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
     project_name: str = Field(min_length=1, max_length=200)
     goal: str | None = Field(default=None, max_length=5000)
     owner_id: int | None = None
@@ -60,6 +62,15 @@ class DraftProject(PlanningInput):
     owner_ids: list[int] | None = Field(default=None, min_length=1, max_length=20)
     start_date: date | None = None
     target_date: date | None = None
+
+    @field_validator("project_code", mode="before")
+    @classmethod
+    def empty_draft_code_as_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class PlanDraftContent(PlanningInput):

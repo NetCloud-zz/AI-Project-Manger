@@ -191,7 +191,7 @@ def request_issue_advice(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
-    if not can_request_issue_advice(current_user, issue):
+    if not can_request_issue_advice(current_user, issue, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )

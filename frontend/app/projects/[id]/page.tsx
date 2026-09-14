@@ -123,6 +123,7 @@ function ProjectDetailInner() {
       item.work_stream,
       item.branch_label,
       item.owner?.name,
+      ...(item.owners ?? []).map((owner) => owner.name),
       item.status,
     ],
     defaultPageSize: 10,

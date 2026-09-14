@@ -146,7 +146,8 @@ async def test_batch_owner_create_and_resume_preserve_both_owners(db, actor, res
         assert failed["business_succeeded"] == 0
         assert db.scalar(select(func.count()).select_from(Project)) == 0
         summary = format_execution(failed)
-        assert "业务写入成功 0 项" in summary
+        assert "业务写入步骤成功 0" in summary
+        assert "实际创建任务 0 个" in summary
         assert "批量查询负责人" in summary
         service.retry(
             plan, CommandRetryInput(expected_revision=failed["revision"], item_ids=["project"])

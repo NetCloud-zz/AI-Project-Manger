@@ -84,6 +84,7 @@ def task_payload(task: Task) -> dict[str, Any]:
         "project_id": task.project_id,
         "project_code": project.project_code if project else None,
         "project_name": project.project_name if project else None,
+        "task_code": task.task_code,
         "task_name": task.task_name,
         "work_stream": task.work_stream,
         "start_date": task.start_date.isoformat() if task.start_date else None,

@@ -15,7 +15,6 @@ from app.schemas.task import (
     TaskLinkCreate,
     TaskLinkResponse,
     TaskLinkUpdate,
-    TaskResponse,
 )
 from app.services.exceptions import (
     DomainValidationError,
@@ -77,7 +76,7 @@ def get_project_gantt(
         project_name=project.project_name,
         target_date=project.target_date,
         editable=can_modify_project(current_user, project, db),
-        tasks=[TaskResponse.model_validate(item) for item in tasks],
+        tasks=TaskService(db).to_responses(tasks),
         links=[TaskLinkResponse.model_validate(item) for item in links],
     )
 

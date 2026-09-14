@@ -2,10 +2,52 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+# Writes that satisfy "create project" / "create tasks" intents.
+_PROJECT_WRITE_TOOLS = frozenset({"create_project", "draft_project_plan"})
+_TASK_WRITE_TOOLS = frozenset(
+    {
+        "create_task",
+        "batch_create_tasks",
+        "draft_project_plan",
+        "apply_project_plan",
+    }
+)
+_BATCH_COVERAGE_TOOLS = frozenset(
+    {"draft_project_plan", "batch_create_tasks", "batch_update_tasks", "apply_project_plan"}
+)
+
+# Fact-finding steps may summarize scattered names/project refs; they must not block writes.
+AUXILIARY_QUERY_TOOLS = frozenset(
+    {
+        "batch_find_users",
+        "find_users",
+        "get_current_user",
+        "get_project",
+        "list_projects",
+        "get_project_context",
+        "search_tasks",
+        "query_entities",
+        "get_project_progress_overview",
+        "list_my_tasks",
+        "get_project_risks",
+    }
+)
+# Back-compat alias used by older imports/tests.
+_AUXILIARY_QUERY_TOOLS = AUXILIARY_QUERY_TOOLS
+
+_CREATE_PROJECT_INTENT = re.compile(
+    r"(?:请)?(?:创建|新建|新增|弄个|建个)\s*项目|立项",
+)
+_CREATE_TASK_INTENT = re.compile(
+    r"(?:请|然后|再)?(?:创建|新建|新增|登记|添加)\s*任务|"
+    r"按以下(?:内容)?创建|创建以下任务",
+)
 
 
 class CommandItemInput(BaseModel):
@@ -24,6 +66,15 @@ class CommandPlanInput(BaseModel):
     # Legacy model-generated counts are accepted but never trusted as an oracle.
     expected_count: int | None = Field(default=None, ge=0)
     items: list[CommandItemInput] = Field(min_length=1, max_length=100)
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def decode_items(cls, value: Any) -> Any:
+        # Some gateways double-encode tool fields. Decode once, then apply all
+        # normal list, item, dependency and coverage checks without coercion.
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -74,101 +125,129 @@ def requires_atomic(source: str) -> bool:
     )
 
 
+def _ws_fold(text: str) -> tuple[str, list[int]]:
+    """Collapse whitespace runs to a single space; map folded index → original index."""
+    folded: list[str] = []
+    mapping: list[int] = []
+    prev_space = False
+    for index, char in enumerate(text):
+        if char.isspace():
+            if folded and not prev_space:
+                folded.append(" ")
+                mapping.append(index)
+            prev_space = True
+            continue
+        folded.append(char)
+        mapping.append(index)
+        prev_space = False
+    return "".join(folded), mapping
+
+
+def locate_source_span(
+    source: str, quote: str, preferred_start: int | None = None
+) -> tuple[int, int]:
+    """Map an item quote onto the authorizing source; allow whitespace-only differences."""
+    if preferred_start is not None:
+        end = preferred_start + len(quote)
+        if preferred_start >= 0 and end <= len(source) and source[preferred_start:end] == quote:
+            return preferred_start, end
+    start = source.find(quote)
+    if start >= 0:
+        return start, start + len(quote)
+
+    source_folded, source_map = _ws_fold(source)
+    quote_folded, _ = _ws_fold(quote)
+    quote_folded = quote_folded.strip()
+    if not quote_folded:
+        raise ValueError("原文映射不匹配")
+    folded_start = source_folded.find(quote_folded)
+    if folded_start < 0:
+        raise ValueError("原文映射不匹配")
+    folded_end = folded_start + len(quote_folded) - 1
+    if folded_end >= len(source_map):
+        raise ValueError("原文映射不匹配")
+    return source_map[folded_start], source_map[folded_end] + 1
+
+
+def assert_mutation_writes(plan: CommandPlanInput, source: str) -> None:
+    """Reject query-only plans when the user clearly asked to create objects."""
+    tools = {item.tool for item in plan.items}
+    if _CREATE_PROJECT_INTENT.search(source) and not (tools & _PROJECT_WRITE_TOOLS):
+        raise ValueError(
+            "创建项目指令必须包含 create_project（或 draft_project_plan），"
+            "不能只查询负责人或项目列表"
+        )
+    if _CREATE_TASK_INTENT.search(source) and not (tools & _TASK_WRITE_TOOLS):
+        raise ValueError(
+            "创建任务指令必须包含 create_task / batch_create_tasks 或 draft_project_plan，"
+            "不能只查询或核对"
+        )
+
+
+def locate_auxiliary_evidence(
+    source: str, quote: str, preferred_start: int | None = None
+) -> tuple[int, int]:
+    """Map auxiliary quotes; allow multi-fragment evidence before soft fallback."""
+    try:
+        return locate_source_span(source, quote, preferred_start)
+    except ValueError:
+        parts = [part.strip() for part in re.split(r"[,，、;；/\n|]+", quote) if part.strip()]
+        for part in parts:
+            if len(part) < 2:
+                continue
+            try:
+                return locate_source_span(source, part)
+            except ValueError:
+                continue
+        return (0, 0)
+
+
+def locate_write_evidence(
+    source: str, quote: str, preferred_start: int | None = None
+) -> tuple[int, int]:
+    """Map write-step quotes; allow multi-fragment matches before failing hard."""
+    try:
+        return locate_source_span(source, quote, preferred_start)
+    except ValueError:
+        parts = [part.strip() for part in re.split(r"[,，、;；/\n|]+", quote) if part.strip()]
+        for part in parts:
+            if len(part) < 2:
+                continue
+            try:
+                return locate_source_span(source, part)
+            except ValueError:
+                continue
+        raise ValueError("原文映射不匹配") from None
+
+
 def validate_coverage(plan: CommandPlanInput, source: str) -> list[tuple[int, int]]:
-    """Exact quotes plus declared counts/numbered requirements; never guess missing items."""
+    """Validate attribution for writes; auxiliary queries may use soft evidence."""
     if requires_atomic(source) and plan.policy != "atomic":
         raise ValueError("用户要求全成全败，不能使用独立提交策略")
-    spans = []
+    spans: list[tuple[int, int]] = []
     for item in plan.items:
-        start = (
-            item.source_start if item.source_start is not None else source.find(item.source_text)
-        )
-        end = start + len(item.source_text)
-        if start < 0 or source[start:end] != item.source_text:
-            raise ValueError(f"{item.item_id} 的原文映射不匹配")
-        spans.append((start, end))
+        if item.tool in _AUXILIARY_QUERY_TOOLS:
+            spans.append(locate_auxiliary_evidence(source, item.source_text, item.source_start))
+            continue
+        try:
+            spans.append(locate_write_evidence(source, item.source_text, item.source_start))
+        except ValueError as exc:
+            raise ValueError(
+                f"{item.item_id} 的原文映射不匹配（写入步骤必须能对上用户授权原文）"
+            ) from exc
+    assert_mutation_writes(plan, source)
     counts = re.findall(
         r"(?:创建|新增|新建)(?:以下|这|共|总共|分别|恰好|正好)?\s*(\d+)\s*(?:个|条|项)?(?:独立)?(?:执行)?(?:的)?任务",
         source,
     )
-    batch_tools = {"draft_project_plan", "batch_create_tasks", "batch_update_tasks", "apply_project_plan"}
     created = sum(i.tool == "create_task" for i in plan.items)
-    if counts and created != sum(int(n) for n in counts) and not any(
-        i.tool in batch_tools for i in plan.items
+    if (
+        counts
+        and created != sum(int(n) for n in counts)
+        and not any(i.tool in _BATCH_COVERAGE_TOOLS for i in plan.items)
     ):
         raise ValueError("任务创建数量与用户明确要求的 N 不一致，尚有遗漏或额外动作")
-    # One numbered requirement needs its own mapped item. Quoting the whole
-    # request once must not conceal omitted lines or duplicate one line N times.
-    # A single batch tool may cover many numbered lines.
-    requirements = source_requirements(source)
-    if requirements and any(item.tool in batch_tools for item in plan.items):
-        covered = set()
-        for item, (start, end) in zip(plan.items, spans, strict=True):
-            if item.tool not in batch_tools:
-                continue
-            for index, req in enumerate(requirements):
-                if start <= req["start"] and end >= req["end"]:
-                    covered.add(index)
-        if len(covered) == len(requirements):
-            return spans
-    matched: dict[int, int] = {}
-
-    def assign(index: int, visited: set[int]) -> bool:
-        requirement = requirements[index]
-        for item_index, (start, end) in enumerate(spans):
-            if sum(start <= r["start"] and end >= r["end"] for r in requirements) != 1:
-                continue
-            if item_index in visited or not (
-                start <= requirement["end"] and end >= requirement["start"]
-            ):
-                continue
-            # Require the complete numbered content, not a shared word.
-            if not (start <= requirement["start"] and end >= requirement["end"]):
-                continue
-            visited.add(item_index)
-            if item_index not in matched or assign(matched[item_index], visited):
-                matched[item_index] = index
-                return True
-        return False
-
-    missing = [
-        r["requirement_id"] for index, r in enumerate(requirements) if not assign(index, set())
-    ]
-    if missing:
-        raise ValueError("编号指令缺少独立执行项：" + "、".join(missing))
     return spans
-
-
-def source_requirements(source: str) -> list[dict[str, Any]]:
-    return [
-        {
-            "requirement_id": f"r{index}",
-            "text": match.group(1),
-            "start": match.start(1),
-            "end": match.end(1),
-        }
-        for index, match in enumerate(
-            re.finditer(r"(?m)^[ \t]*(?:\d+[.、）)]|[-*])[ \t]*(\S[^\n]*)", source), 1
-        )
-    ]
-
-
-def missing_source_fields(source: str) -> list[str]:
-    """Task owners marked TBD may stay empty; project still needs a real owner/code."""
-    from app.core.owner_labels import has_project_pending_owner_line
-
-    questions = []
-    if has_project_pending_owner_line(source):
-        questions.append("请补充项目负责人")
-    # Accept: explicit 项目编号/代码, PRJ-1001 style, or code-like token in 项目：NLRP3 …
-    if re.search(r"(?m)^\s*项目[：:]", source) and not re.search(
-        r"(?m)^\s*项目(?:编号|代码)[：:][ \t]*[A-Za-z0-9][A-Za-z0-9_-]*"
-        r"|^\s*项目[：:][^\n]*\b[A-Z][A-Z0-9]*-\d+\b"
-        r"|^\s*项目[：:][ \t]*[A-Za-z][A-Za-z0-9_-]{1,31}\b",
-        source,
-    ):
-        questions.append("请提供新项目的唯一项目代码（例如 PRJ-1001）")
-    return questions
 
 
 class CommandRetryInput(BaseModel):

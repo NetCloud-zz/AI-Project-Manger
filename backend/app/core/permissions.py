@@ -19,8 +19,37 @@ from app.models.user import User, UserRole
 
 
 def user_has_task_in_project(db: Session, user_id: int, project_id: int) -> bool:
-    stmt = select(exists().where(Task.project_id == project_id, Task.owner_id == user_id))
-    return bool(db.scalar(stmt))
+    as_primary = select(exists().where(Task.project_id == project_id, Task.owner_id == user_id))
+    if db.scalar(as_primary):
+        return True
+    as_co_owner = select(
+        exists().where(
+            Task.project_id == project_id,
+            TaskParticipant.task_id == Task.id,
+            TaskParticipant.user_id == user_id,
+            TaskParticipant.role == "OWNER",
+        )
+    )
+    return bool(db.scalar(as_co_owner))
+
+
+def user_is_task_owner(db: Session | None, user_id: int, task: Task) -> bool:
+    """True when the user is the primary owner or an OWNER task participant."""
+    if task.owner_id == user_id:
+        return True
+    if db is None:
+        return False
+    return bool(
+        db.scalar(
+            select(
+                exists().where(
+                    TaskParticipant.task_id == task.id,
+                    TaskParticipant.user_id == user_id,
+                    TaskParticipant.role == "OWNER",
+                )
+            )
+        )
+    )
 
 
 def user_is_project_owner(db: Session, user_id: int, project: Project) -> bool:
@@ -95,8 +124,8 @@ def can_view_task(db: Session, user: User, task: Task) -> bool:
     ):
         return True
     if user.role == UserRole.MEMBER:
-        return task.owner_id == user.id
-    if task.owner_id == user.id:
+        return user_is_task_owner(db, user.id, task)
+    if user_is_task_owner(db, user.id, task):
         return True
     project = task.project
     if project and user.role == UserRole.PROJECT_OWNER:
@@ -135,7 +164,7 @@ def can_modify_task_status(
         return False
     if can_modify_task_core(user, task, project, db):
         return True
-    return task.owner_id == user.id
+    return user_is_task_owner(db, user.id, task)
 
 
 def can_view_issue(db: Session, user: User, issue: Issue) -> bool:
@@ -143,7 +172,7 @@ def can_view_issue(db: Session, user: User, issue: Issue) -> bool:
         return True
     task = issue.task
     project = issue.project
-    if task and task.owner_id == user.id:
+    if task and user_is_task_owner(db, user.id, task):
         return True
     if issue.reported_by == user.id:
         return True
@@ -182,7 +211,9 @@ def can_modify_issue(user: User, issue: Issue, db: Session | None = None) -> boo
     )
 
 
-def can_request_issue_advice(user: User, issue: Issue) -> bool:
+def can_request_issue_advice(
+    user: User, issue: Issue, db: Session | None = None
+) -> bool:
     """Request AI suggested solution — admin, project owner, reporter, or task owner."""
     if user.role == UserRole.ADMIN:
         return True
@@ -191,7 +222,7 @@ def can_request_issue_advice(user: User, issue: Issue) -> bool:
     if issue.reported_by == user.id:
         return True
     task = issue.task
-    if task and task.owner_id == user.id:
+    if task and user_is_task_owner(db, user.id, task):
         return True
     project = issue.project
     return bool(
@@ -256,13 +287,15 @@ def can_view_personal_dashboard(user: User) -> bool:
     return user.role == UserRole.MEMBER
 
 
-def can_submit_progress(user: User, task: Task, project: Project) -> bool:
+def can_submit_progress(
+    user: User, task: Task, project: Project, db: Session | None = None
+) -> bool:
     """Task owner submits daily progress; project owner may submit on behalf."""
     if user.role == UserRole.EXECUTIVE:
         return False
     if user.role == UserRole.ADMIN:
         return True
-    if task.owner_id == user.id:
+    if user_is_task_owner(db, user.id, task):
         return True
     return user.role == UserRole.PROJECT_OWNER and (
         project.owner_id == user.id

@@ -175,7 +175,9 @@ class PlanDraftService:
         warnings: list[str] = []
         project = content.project
 
-        if self.db.scalar(
+        from app.services.entity_codes import is_blank_or_placeholder_code
+
+        if not is_blank_or_placeholder_code(project.project_code) and self.db.scalar(
             select(Project.id).where(Project.project_code == project.project_code.upper())
         ):
             blocking.append(f"项目编号 {project.project_code.upper()} 已存在")

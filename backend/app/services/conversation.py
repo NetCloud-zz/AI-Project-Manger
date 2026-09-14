@@ -1018,6 +1018,12 @@ class ConversationService:
                 user_message_id=request.user_message_id,
                 assistant_message_id=assistant.id,
             )
+            from app.services.agent_commands import CommandService
+
+            CommandService(self.db).reconcile_after_interrupt(
+                request.id,
+                reason="stopped" if stopped else "interrupted",
+            )
         self.db.commit()
 
     def stop_request(
@@ -1154,6 +1160,11 @@ class ConversationService:
                     status=AgentRequestStatus.INTERRUPTED,
                     user_message_id=request.user_message_id,
                     assistant_message_id=None,
+                )
+                from app.services.agent_commands import CommandService
+
+                CommandService(self.db).reconcile_after_interrupt(
+                    request.id, reason="stale_reclaim"
                 )
                 self.db.commit()
             reclaimed += 1

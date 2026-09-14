@@ -12,6 +12,7 @@ const labels: Record<string, string> = {
   BLOCKED: "依赖阻断",
   ROLLED_BACK: "已回滚",
   PENDING: "未执行",
+  UNKNOWN: "中断未决",
 };
 
 const toolLabels: Record<string, string> = {
@@ -19,6 +20,7 @@ const toolLabels: Record<string, string> = {
   create_project: "创建项目",
   update_project: "更新项目",
   create_task: "创建任务",
+  create_milestone: "创建里程碑",
   update_task: "更新任务",
   draft_project_plan: "起草计划草案",
   apply_project_plan: "发布计划草案",
@@ -50,6 +52,14 @@ export function CommandPlanCard({ initial }: { initial: CommandPlan }) {
   const url = `/api/v1/agent/requests/${initial.request_id}/plan`;
   const unplanned =
     plan.unplanned || ["INVALID_PLAN", "NEEDS_INPUT", "PLANNING_FAILED"].includes(plan.status);
+  const unplannedTitle =
+    plan.status === "NEEDS_INPUT"
+      ? "待补充信息，未执行业务操作"
+      : plan.error_code === "COMMAND_MODEL_UNAVAILABLE"
+        ? "模型未能完成清单整理，未执行业务操作"
+        : plan.error_code === "COMMAND_PLAN_INVALID"
+          ? "清单未通过校验，未执行业务操作"
+          : "清单整理未完成，未执行业务操作";
   const retryIds = plan.items
     .filter((i) => ["PENDING", "FAILED", "BLOCKED", "ROLLED_BACK"].includes(i.state))
     .map((i) => i.item_id);
@@ -93,24 +103,27 @@ export function CommandPlanCard({ initial }: { initial: CommandPlan }) {
     }
   }
   const businessSucceeded = plan.business_succeeded ?? 0;
+  const createdTaskCount = plan.created_task_count ?? 0;
+  const createdMilestoneCount = plan.created_milestone_count ?? 0;
+  const recovery = plan.recovery;
   return (
     <AppCard plain title="指令执行清单">
       {unplanned ? (
         <>
           <Alert
             type={plan.status === "NEEDS_INPUT" ? "info" : "warning"}
-            title={
-              plan.status === "NEEDS_INPUT"
-                ? "待补充信息，未执行业务操作"
-                : "清单整理未完成，未执行业务操作"
-            }
+            title={unplannedTitle}
           />
           <p>
-            {plan.business_item_count
-              ? `原文包含 ${plan.business_item_count} 个编号条目。`
-              : "原始指令已保留。"}
-            执行步骤尚未确认。
+            {plan.error?.trim()
+              ? plan.error.includes("原文映射")
+                ? "人员或项目核对步骤的内部引用未对齐，任务尚未创建。原文已保留，无需为了内部字段改写清单。"
+                : plan.error
+              : plan.business_item_count
+                ? `原文包含 ${plan.business_item_count} 个编号条目。执行步骤尚未确认。`
+                : "原始指令已保留。执行步骤尚未确认。"}
           </p>
+          {recovery?.hint ? <p>{recovery.hint}</p> : null}
           {plan.questions?.length ? (
             <ul>
               {plan.questions.map((question) => (
@@ -128,28 +141,57 @@ export function CommandPlanCard({ initial }: { initial: CommandPlan }) {
           </details>
         </>
       ) : (
-        <p>
-          共 {plan.expected_count} 个执行步骤 · 步骤成功 {plan.succeeded}
-          {typeof plan.business_succeeded === "number"
-            ? ` · 业务写入成功 ${businessSucceeded}`
-            : ""}{" "}
-          · 未完成 {plan.remaining}
-        </p>
+        <>
+          <p>
+            共 {plan.expected_count} 个执行步骤 · 步骤成功 {plan.succeeded}
+            {typeof plan.business_succeeded === "number"
+              ? ` · 业务写入步骤成功 ${businessSucceeded}`
+              : ""}
+            {` · 实际创建任务 ${createdTaskCount} 个`}
+            {createdMilestoneCount > 0 ? ` · 里程碑 ${createdMilestoneCount} 个` : ""}
+            {" "}· 未完成 {plan.remaining}
+            {plan.needs_review ? " · 回读发现字段差异待核实" : ""}
+            {typeof plan.business_item_count === "number" && plan.business_item_count > 0
+              ? ` · 业务条目 ${plan.business_item_count}`
+              : ""}
+          </p>
+          {plan.needs_review ? (
+            <Alert type="warning" title="结果待核实：已写入对象与计划字段存在差异，请先核对，勿重复创建。" />
+          ) : null}
+          {recovery?.hint && recovery.action !== "retry_pending" ? (
+            <Alert
+              type={recovery.action === "manual_verify" ? "warning" : "info"}
+              title={recovery.hint}
+            />
+          ) : null}
+        </>
       )}
-      <p>{plan.policy === "atomic" ? "全成全败" : "独立项继续，依赖项等待前置成功"}</p>
-      <ol>
-        {plan.items.map((item) => (
-          <li key={item.item_id}>
-            <Tag color={item.state === "SUCCEEDED" ? "green" : "default"}>
-              {labels[item.state] ?? item.state}
-            </Tag>{" "}
-            {toolLabel(item.tool) ? <strong>{toolLabel(item.tool)}</strong> : null}
-            {toolLabel(item.tool) ? " · " : null}
-            {item.source_text}
-            {item.result?.error && <p>{item.result.error.message}</p>}
-          </li>
-        ))}
-      </ol>
+      {!unplanned ? (
+        <p>{plan.policy === "atomic" ? "全成全败" : "独立项继续，依赖项等待前置成功"}</p>
+      ) : null}
+      {!unplanned || plan.items.length > 0 ? (
+        <ol>
+          {plan.items.map((item) => (
+            <li key={item.item_id}>
+              <Tag
+                color={
+                  item.state === "SUCCEEDED"
+                    ? "green"
+                    : item.state === "UNKNOWN"
+                      ? "orange"
+                      : "default"
+                }
+              >
+                {labels[item.state] ?? item.state}
+              </Tag>{" "}
+              {toolLabel(item.tool) ? <strong>{toolLabel(item.tool)}</strong> : null}
+              {toolLabel(item.tool) ? " · " : null}
+              {item.source_text}
+              {item.result?.error && <p>{item.result.error.message}</p>}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {error && <Alert type="error" title={error} />}
       <Space>
         <Button loading={busy} onClick={refresh}>
@@ -167,11 +209,13 @@ export function CommandPlanCard({ initial }: { initial: CommandPlan }) {
             补充／重新整理
           </Button>
         )}
-        {["PARTIAL", "FAILED", "PAUSED", "READY"].includes(plan.status) && retryIds.length > 0 && (
-          <Button disabled={busy} onClick={retry}>
-            恢复未完成项
-          </Button>
-        )}
+        {["PARTIAL", "FAILED", "PAUSED", "READY"].includes(plan.status) &&
+          retryIds.length > 0 &&
+          !plan.needs_review && (
+            <Button disabled={busy} onClick={retry}>
+              恢复未完成项
+            </Button>
+          )}
       </Space>
       {unplanned && (
         <p>补充会将原文放回输入框；修改并发送后生成新请求，不会自动执行原请求。</p>
