@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NoReturn
+
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_auth_provider
@@ -12,8 +14,10 @@ from app.integrations.oa.client import OaMySQLClient
 from app.integrations.oa.exceptions import (
     OaNotConfiguredError,
     OaSsoError,
+    OaUnavailableError,
     OaUserNotFoundError,
 )
+from app.integrations.oa.password import is_oa_default_password
 from app.integrations.oa.sso import verify_sso_sign
 from app.integrations.oa.sso_ticket_store import consume_sso_ticket
 from app.integrations.wecom.exceptions import WeComUserMappingError
@@ -25,6 +29,10 @@ from app.services.user import UserService
 
 class AuthenticationError(Exception):
     """Raised when credentials are invalid or the account is inactive."""
+
+
+class LoginUnavailableError(Exception):
+    """Raised when the account's identity source cannot be reached."""
 
 
 class WeComAuthenticationError(AuthenticationError):
@@ -58,6 +66,16 @@ class AuthService:
         password: str,
         ip_address: str | None = None,
     ) -> tuple[str, User]:
+        if self.settings.oa_password_login_configured:
+            local = self.users.get_by_username(username)
+            if local is None or local.oa_admin_id is not None:
+                return self._login_with_oa_password(
+                    username=username,
+                    password=password,
+                    local=local,
+                    ip_address=ip_address,
+                )
+
         result = self.provider.authenticate(
             self.db,
             AuthCredentials(username=username, password=password),
@@ -85,6 +103,65 @@ class AuthService:
             user_id=user.id,
             ip_address=ip_address,
             new_value={"provider": result.provider, "username": user.username},
+        )
+        return token, user
+
+    def _login_with_oa_password(
+        self,
+        *,
+        username: str,
+        password: str,
+        local: User | None,
+        ip_address: str | None,
+    ) -> tuple[str, User]:
+        def fail(reason: str, message: str = "Invalid username or password") -> NoReturn:
+            self.audit.record(
+                action="auth.login_failed",
+                resource_type="user",
+                resource_id=username,
+                ip_address=ip_address,
+                new_value={"username": username, "provider": "oa_password", "reason": reason},
+            )
+            raise AuthenticationError(message)
+
+        if is_oa_default_password(password):
+            fail("default_password", "OA 初始密码不能用于登录，请先在 OA 中修改密码后再试")
+
+        oa_admin_id = local.oa_admin_id if local is not None else None
+        try:
+            record = OaMySQLClient(self.settings).verify_active_password(
+                password=password,
+                oa_admin_id=oa_admin_id,
+                username=username if oa_admin_id is None else None,
+            )
+        except (OaNotConfiguredError, OaUnavailableError) as exc:
+            raise LoginUnavailableError("OA 暂时无法连接，请稍后再试") from exc
+        if record is None:
+            fail("bad_credentials_or_inactive")
+
+        user, _created = UserService(self.db, self.settings).ensure_user_from_oa(
+            record,
+            ip_address=ip_address,
+        )
+        if not user.is_active:
+            fail("local_inactive")
+
+        token = create_access_token(
+            subject=str(user.id),
+            extra_claims={"role": user.role.value, "username": user.username},
+            settings=self.settings,
+        )
+        self.audit.record(
+            action="auth.login_success",
+            resource_type="user",
+            resource_id=str(user.id),
+            user_id=user.id,
+            ip_address=ip_address,
+            new_value={
+                "provider": "oa_password",
+                "username": user.username,
+                "oa_admin_id": user.oa_admin_id,
+            },
         )
         return token, user
 

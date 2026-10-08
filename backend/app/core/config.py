@@ -155,6 +155,9 @@ class Settings(BaseSettings):
     OA_SSO_SECRET: str | None = None
     OA_SSO_MAX_AGE_SECONDS: int = 300
     OA_BASE_URL: str | None = None
+    # Username/password login verified live against OA `pass` (unsalted MD5).
+    # When enabled, OA-linked users can no longer log in with a local password.
+    OA_PASSWORD_LOGIN_ENABLED: bool = False
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -240,6 +243,12 @@ class Settings(BaseSettings):
     def oa_sso_configured(self) -> bool:
         """SSO needs MySQL lookup + shared HMAC secret."""
         return self.oa_mysql_configured and bool(self.OA_SSO_SECRET)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def oa_password_login_configured(self) -> bool:
+        """OA password login needs the MySQL directory and the explicit opt-in flag."""
+        return self.oa_mysql_configured and self.OA_PASSWORD_LOGIN_ENABLED
 
     @computed_field  # type: ignore[prop-decorator]
     @property

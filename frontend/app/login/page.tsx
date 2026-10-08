@@ -63,7 +63,7 @@ export default function LoginPage() {
               name="username"
               rules={[{ required: true, message: "请输入用户名" }]}
             >
-              <Input autoComplete="username" placeholder="admin / lisi / owner" />
+              <Input autoComplete="username" placeholder="OA 账号或系统账号" />
             </Form.Item>
             <Form.Item
               label="密码"

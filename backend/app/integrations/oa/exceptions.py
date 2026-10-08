@@ -15,6 +15,10 @@ class OaReadOnlyError(OaError):
     """Raised if any mutating SQL is attempted against OA MySQL."""
 
 
+class OaUnavailableError(OaError):
+    """Raised when OA MySQL cannot be reached or the query fails."""
+
+
 class OaUserNotFoundError(OaError):
     """Raised when an OA admin row is missing or not eligible."""
 

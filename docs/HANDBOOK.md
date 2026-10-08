@@ -152,6 +152,7 @@ cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 - 对象访问在 Service / `permissions.py` 校验。
 - 审计与日志脱敏。
 - OA MySQL **只读**；SSO 使用短时 HMAC。
+- `OA_PASSWORD_LOGIN_ENABLED=true` 时，已关联 OA 的用户只能用 OA 密码登录：每次登录实时查询 OA（在职状态与 MD5 密码），不在本地保存 OA 密码哈希；OA 不可达返回 503，不回退本地密码；OA 初始密码 `123456` 一律拒绝。未关联 OA 的本地账号仍用本地密码。建议 `OA_MYSQL_USER` 使用仅能读取用户表的专用账号。
 - Agent 工具以当前用户身份执行，复用同一套权限。
 
 ---

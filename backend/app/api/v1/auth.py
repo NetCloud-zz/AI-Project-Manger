@@ -25,6 +25,7 @@ from app.schemas.user import UserResponse
 from app.services.auth import (
     AuthenticationError,
     AuthService,
+    LoginUnavailableError,
     OaAuthenticationError,
     WeComAuthenticationError,
 )
@@ -62,6 +63,11 @@ def login(
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+    except LoginUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
 

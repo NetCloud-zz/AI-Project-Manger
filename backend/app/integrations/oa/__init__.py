@@ -5,6 +5,7 @@ from app.integrations.oa.exceptions import (
     OaNotConfiguredError,
     OaReadOnlyError,
     OaSsoError,
+    OaUnavailableError,
     OaUserNotFoundError,
 )
 from app.integrations.oa.sso import build_sso_sign, verify_sso_sign
@@ -15,6 +16,7 @@ __all__ = [
     "OaNotConfiguredError",
     "OaReadOnlyError",
     "OaSsoError",
+    "OaUnavailableError",
     "OaUserNotFoundError",
     "build_sso_sign",
     "verify_sso_sign",

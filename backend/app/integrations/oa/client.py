@@ -13,7 +13,13 @@ from datetime import date, datetime
 from typing import Any
 
 from app.core.config import Settings, get_settings
-from app.integrations.oa.exceptions import OaNotConfiguredError, OaReadOnlyError, OaUserNotFoundError
+from app.integrations.oa.exceptions import (
+    OaNotConfiguredError,
+    OaReadOnlyError,
+    OaUnavailableError,
+    OaUserNotFoundError,
+)
+from app.integrations.oa.password import verify_oa_password
 
 _MUTATING_PREFIXES = (
     "insert",
@@ -89,19 +95,22 @@ class OaMySQLClient:
         except ImportError as exc:  # pragma: no cover - dependency declared in pyproject
             raise OaNotConfiguredError("pymysql is not installed") from exc
 
-        conn = pymysql.connect(
-            host=self.settings.OA_MYSQL_HOST,
-            port=self.settings.OA_MYSQL_PORT,
-            user=self.settings.OA_MYSQL_USER,
-            password=self.settings.OA_MYSQL_PASSWORD or "",
-            database=self.settings.OA_MYSQL_DATABASE,
-            charset="utf8mb4",
-            connect_timeout=10,
-            read_timeout=30,
-            write_timeout=5,
-            cursorclass=pymysql.cursors.DictCursor,
-            autocommit=True,
-        )
+        try:
+            conn = pymysql.connect(
+                host=self.settings.OA_MYSQL_HOST,
+                port=self.settings.OA_MYSQL_PORT,
+                user=self.settings.OA_MYSQL_USER,
+                password=self.settings.OA_MYSQL_PASSWORD or "",
+                database=self.settings.OA_MYSQL_DATABASE,
+                charset="utf8mb4",
+                connect_timeout=10,
+                read_timeout=30,
+                write_timeout=5,
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=True,
+            )
+        except pymysql.MySQLError as exc:
+            raise OaUnavailableError("OA MySQL is unreachable") from exc
         try:
             with conn.cursor() as cur:
                 # Best-effort; ignore if the server rejects it.
@@ -124,10 +133,15 @@ class OaMySQLClient:
 
     def _execute_select(self, sql: str, params: tuple[Any, ...] | list[Any]) -> list[dict[str, Any]]:
         self._assert_select_only(sql)
+        import pymysql
+
         with self._connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+                try:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
+                except pymysql.MySQLError as exc:
+                    raise OaUnavailableError("OA MySQL query failed") from exc
                 return list(rows)
 
     def _table(self) -> str:
@@ -187,6 +201,34 @@ class OaMySQLClient:
         rows = self._execute_select(sql, (username,))
         if not rows:
             raise OaUserNotFoundError("OA user not found or not active")
+        return self._row_to_record(rows[0])
+
+    def verify_active_password(
+        self,
+        *,
+        password: str,
+        oa_admin_id: int | None = None,
+        username: str | None = None,
+    ) -> OaAdminRecord | None:
+        """Return the active OA user when ``password`` matches, else ``None``.
+
+        The stored hash is compared here and never leaves this method.
+        """
+        param: int | str
+        if oa_admin_id is not None:
+            where, param = "`id` = %s", oa_admin_id
+        elif username:
+            where, param = "`user` = %s", username
+        else:
+            return None
+        cols = ", ".join(f"`{c}`" for c in (*_SAFE_COLUMNS, "pass"))
+        sql = (
+            f"SELECT {cols} FROM {self._table()} "
+            f"WHERE {where} AND {self._active_clause()} LIMIT 1"
+        )
+        rows = self._execute_select(sql, (param,))
+        if not rows or not verify_oa_password(password, rows[0].get("pass")):
+            return None
         return self._row_to_record(rows[0])
 
     def list_active(self) -> list[OaAdminRecord]:
