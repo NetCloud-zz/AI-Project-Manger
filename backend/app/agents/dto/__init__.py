@@ -11,6 +11,9 @@ _TASK_KEEP = frozenset(
     {
         "id",
         "task_name",
+        "task_code",
+        "owner_ids",
+        "owners",
         "project_id",
         "project_code",
         "work_stream",

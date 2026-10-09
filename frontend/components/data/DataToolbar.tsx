@@ -50,6 +50,7 @@ export function DataToolbar({
           value={keyword}
           prefix={<SearchOutlined />}
           placeholder={searchPlaceholder}
+          aria-label={searchPlaceholder}
           onChange={(event) => onKeywordChange(event.target.value)}
         />
 
@@ -60,6 +61,7 @@ export function DataToolbar({
             allowClear
             value={filterValues[filter.key] ?? undefined}
             placeholder={filter.placeholder}
+            aria-label={filter.placeholder}
             options={filter.options}
             onChange={(value) => onFilterChange?.(filter.key, value ?? undefined)}
           />
@@ -70,6 +72,7 @@ export function DataToolbar({
             className="data-toolbar__field data-toolbar__select data-toolbar__select--sort"
             value={sort}
             placeholder="排序"
+            aria-label="排序"
             options={sortOptions}
             onChange={(value) => onSortChange?.(value ?? undefined)}
           />
@@ -79,7 +82,7 @@ export function DataToolbar({
       <div className="data-toolbar__actions">
         {summary ? <span className="data-toolbar__summary">{summary}</span> : null}
         {showReset ? (
-          <Button icon={<ReloadOutlined />} onClick={onReset}>
+          <Button icon={<ReloadOutlined />} onClick={onReset} aria-label="重置筛选">
             重置
           </Button>
         ) : null}

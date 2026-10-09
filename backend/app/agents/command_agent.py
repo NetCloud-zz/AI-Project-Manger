@@ -11,11 +11,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
+from pydantic_core import to_jsonable_python
 from sqlalchemy.orm import Session
 
 from app.agents.dto import sanitize_agent_data
+from app.agents.intent import TurnDecision, regex_decision
 from app.agents.management_tools import MANAGEMENT_TOOLS, ManagementToolExecutor
 from app.agents.stream_events import AgentStreamEvent
+from app.agents.toolsets import TOOLSETS_BY_NAME
 from app.core.config import Settings
 from app.core.security import SENSITIVE_FIELD_NAMES
 from app.llm.base import LLMError
@@ -25,10 +28,6 @@ from app.models.agent_request import AgentRequest, AgentRequestStatus
 from app.models.user import User
 from app.schemas.agent_command import AUXILIARY_QUERY_TOOLS, CommandPlanInput
 from app.services.agent_commands import CommandService, format_execution
-from app.services.agent_entities import (
-    plan_coverage_source,
-    resolve_write_authorization,
-)
 from app.services.exceptions import DomainValidationError
 
 _parameters = CommandPlanInput.model_json_schema()
@@ -191,16 +190,19 @@ async def command_stream(
     actor: User,
     request_id: int,
     context_messages: list[ChatMessage] | None = None,
+    decision: TurnDecision | None = None,
 ) -> AsyncIterator[AgentStreamEvent]:
     service = CommandService(db)
-    prior = [
-        item.content
-        for item in (context_messages or [])
-        if item.role == "user" and isinstance(item.content, str) and item.content.strip()
-    ]
+    if decision is None:
+        prior = [
+            item.content
+            for item in (context_messages or [])
+            if item.role == "user" and isinstance(item.content, str) and item.content.strip()
+        ]
+        decision = regex_decision(message, prior)
     # Guard uses write authorization; coverage prefers prior create body on confirms.
-    auth_source = plan_coverage_source(message, prior)
-    write_auth = resolve_write_authorization(message, prior)
+    auth_source = decision.coverage_source
+    write_auth = decision.authorization_source
     plan = service.start(request_id, auth_source, actor)
     budget = PlanningBudget(
         max_rounds=settings.COMMAND_PLAN_MAX_ROUNDS,
@@ -214,6 +216,11 @@ async def command_stream(
         "phase": "understand",
         "budget": budget.snapshot(),
         "write_authorized": write_auth is not None,
+        "authorization": {
+            "mode": decision.mode,
+            "decided_by": decision.decided_by,
+            "authorized": decision.writes_authorized,
+        },
     }
 
     rules = """先按需用白名单只读工具核对项目与人员事实，再调用一次 plan_commands 提交完整清单。
@@ -258,7 +265,9 @@ batch_find_users 返回 {resolved:[{input,name,user_id}], ambiguous:[], not_foun
             + json.dumps(
                 [t.model_dump() for t in PLANNING_TOOLBOX],
                 ensure_ascii=False,
-            ),
+            )
+            + "\n\n计划草案工具（draft_project_plan 等）的使用规则：\n"
+            + TOOLSETS_BY_NAME["plan_draft"].instructions,
         ),
     )
     public_error = (
@@ -272,6 +281,7 @@ batch_find_users 返回 {resolved:[{input,name,user_id}], ambiguous:[], not_foun
         agent_request_id=request_id,
         auto_commit=True,
         source_message=auth_source,
+        write_authorized=decision.guard_authorized,
     )
     _persist_phase(db, plan, details, "query_facts")
 
@@ -453,8 +463,10 @@ batch_find_users 返回 {resolved:[{input,name,user_id}], ambiguous:[], not_foun
                 result = executor.execute_result(
                     call.name, call.arguments, tool_call_id=call.id
                 )
-                lean = sanitize_agent_data(
-                    call.name, result.data if result.ok else result.model_dump(mode="json")
+                lean = to_jsonable_python(
+                    sanitize_agent_data(
+                        call.name, result.data if result.ok else result.model_dump(mode="json")
+                    )
                 )
                 fact = {
                     "tool": call.name,

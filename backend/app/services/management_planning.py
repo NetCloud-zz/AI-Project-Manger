@@ -49,6 +49,7 @@ from app.services.exceptions import (
 )
 from app.services.advice import AdviceService
 from app.services.business_clock import BusinessClock
+from app.services.agent_change_policy import audit_change_reason, require_change_reason
 from app.services.notification_delivery import NotificationDeliveryService
 from app.services.plan_draft import PlanDraftService
 from app.services.planning import PlanningService, record
@@ -310,6 +311,7 @@ class ManagementPlanningService:
         return self._draft_result(result, "draft_project_plan")
 
     def update_project_plan_draft(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        require_change_reason("update_project_plan_draft", args)
         draft_id = str(args["draft_id"])
         current = self.drafts.get(draft_id, actor)
         plan = self._resolve_plan_owners(args.get("plan") or {})
@@ -323,6 +325,7 @@ class ManagementPlanningService:
             ),
             actor,
         )
+        audit_change_reason(self.db, actor, "update_project_plan_draft", draft_id, args)
         self.db.commit()
         return self._draft_result(result, "update_project_plan_draft")
 

@@ -61,12 +61,15 @@
 1. 会话、上下文、stub、命令规划与原先相同。
 2. 主问答改为 AgentScope：
    - `OpenAIChatModel` + `OpenAICredential`，`base_url` 仍用现有 `LLM_*`。
-   - `Toolkit` 挂上全部 `MANAGEMENT_TOOLS`。
+   - `Toolkit` 默认只常驻核心工具（约 35 个）+ 原生 `reset_tools`；计划草案、变更方案、备用路线、问题建议、兼容查询五组按需激活（`AGENT_TOOLSETS_ENABLED`，关闭时挂全部 `MANAGEMENT_TOOLS` 并把各组说明并入系统提示）。未激活组的工具被调用时返回 `TOOLSET_INACTIVE`。
+   - 历史中的工具往返（如状态追问时预取的进展总览）会被压平成「系统已查询的事实」文本再交给 `observe`，不再因带 tool call 而丢弃整段历史。
    - 每个工具是 `ExecutorBoundTool`：AgentScope 只负责调用，真正执行仍是 `ManagementToolExecutor`（当前用户 RBAC、幂等、审计、卡片）。
    - `ReActConfig(max_iters)` 对齐 `AGENT_REASONING_ROUNDS`（默认 20）。
    - 同一写入 `operation_id` 的参数纠错另计 `AGENT_TOOL_CORRECTION_ROUNDS`（默认 10）；读工具不占纠错次数。
    - AgentScope 权限模式为 `BYPASS` / 工具 `check_permissions` 恒为 ALLOW，**避免**官方 `FunctionTool` 默认 ASK。业务鉴权不在这一层。
 3. `reply_stream` 事件映射为原 SSE 后，前端无感。
+4. 每轮只做一次意图 / 写授权判定（`app/agents/intent.py` 的 `TurnDecision`）：`AGENT_INTENT_MODE=regex` 与原启发式一致；`hybrid` 保留正则否决（状态追问、明确只讨论），其余交给快模型结构化判定，置信度 ≥ `AGENT_INTENT_MIN_CONFIDENCE` 且 `evidence` 逐字出自用户原文才授权写入；模型失败或超时回退正则。同一判定同时决定是否进入命令规划、`guard_mutation` 是否放行（含命令计划执行阶段）。
+5. 每轮结束输出一条结构化日志 `agent.trace`（路由、运行时、意图、工具调用与耗时、激活的工具组、提示/工具 schema 体积），`AGENT_TRACE_LOG=false` 可关闭。
 
 未安装 `agentscope`、或 `AGENT_RUNTIME=legacy`、或构造 `ManagementAgent` 时**注入了自定义 gateway**（测试常见），则回退自研循环（同样使用 20 / 10 两套上限）。
 
@@ -190,6 +193,11 @@ Agent 决定查什么、筛什么、批量包含哪些记录、失败后改哪�
 AGENT_RUNTIME=agentscope
 AGENT_REASONING_ROUNDS=20
 AGENT_TOOL_CORRECTION_ROUNDS=10
+AGENT_INTENT_MODE=regex          # hybrid：快模型意图判定 + 正则否决
+AGENT_INTENT_MIN_CONFIDENCE=0.7
+AGENT_INTENT_TIMEOUT_SECONDS=15
+AGENT_TOOLSETS_ENABLED=true
+AGENT_TRACE_LOG=true
 LLM_BASE_URL=...
 LLM_API_KEY=...
 LLM_MODEL_REASONING=...
@@ -229,6 +237,7 @@ docker compose up -d --force-recreate backend
 7. 写成功回执必须带 `verification`，`actual_count != expected_count` 时不得说「已创建完成」。
 8. 离开页面 / 点停止：生成结束，会话可再发。
 9. `AGENT_RUNTIME=legacy`：编排回退自研循环，页面协议与工具语义不变。
+10. 评测：`make eval-intent`（只测意图判定，不碰库）与 `make eval-agent db=...`（端到端，每例一个一次性库 / schema），用例见 `backend/evals/assistant_core.yaml`，结果写到 `backend/evals/results/`（不入库）。
 
 ---
 

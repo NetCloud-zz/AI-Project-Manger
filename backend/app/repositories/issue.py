@@ -7,8 +7,8 @@ from datetime import datetime
 from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.permissions import project_ids_owned_by
 from app.models.issue import OPEN_ISSUE_STATUSES, Issue, IssueSeverity, IssueStatus
-from app.models.project import project_owners
 from app.models.user import User, UserRole
 
 
@@ -58,20 +58,13 @@ class IssueRepository:
 
         if user.role in (UserRole.ADMIN, UserRole.EXECUTIVE):
             return list(self.db.scalars(stmt).unique().all())
-        if user.role == UserRole.PROJECT_OWNER:
-            co_owned = select(project_owners.c.project_id).where(
-                project_owners.c.user_id == user.id
-            )
-            stmt = stmt.where(
-                or_(Issue.project.has(owner_id=user.id), Issue.project_id.in_(co_owned))
-            )
-            return list(self.db.scalars(stmt).unique().all())
 
-        # Members see issues on their own tasks, ones they reported, and
-        # project-level issues in projects where they hold a task.
+        # Project owners see everything on their projects; others see issues on
+        # their own tasks, ones they reported, or projects where they hold a task.
         member_projects = select(Task.project_id).where(Task.owner_id == user.id)
         stmt = stmt.where(
             or_(
+                Issue.project_id.in_(project_ids_owned_by(user.id)),
                 Issue.task.has(Task.owner_id == user.id),
                 Issue.reported_by == user.id,
                 Issue.project_id.in_(member_projects),

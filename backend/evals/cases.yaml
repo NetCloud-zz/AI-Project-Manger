@@ -1,5 +1,5 @@
 # Assistant evaluation cases (OPT-11).
-# Run with: make eval-list  |  optional CI: pytest is not required; score offline.
+# Run with: make eval-intent / make eval-agent (also loads assistant_core.yaml).
 # Do NOT gate merges on live LLM — stub or recorded traces only.
 
 version: 1

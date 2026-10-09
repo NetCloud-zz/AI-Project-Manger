@@ -22,6 +22,7 @@ from app.repositories.user import UserRepository
 from app.schemas.dashboard import ManagementAttentionItem
 from app.schemas.task import TaskPlanningFields
 from app.services.action_item import ActionItemService
+from app.services.agent_task_owners import task_owners
 from app.services.business_clock import BusinessClock
 from app.services.exceptions import (
     DomainValidationError,
@@ -74,6 +75,7 @@ _project_payload = project_payload
 
 def task_payload(task: Task) -> dict[str, Any]:
     owner = task.owner
+    owners = task_owners(task)
     project = task.project
     planned_due = task.due_date.isoformat() if task.due_date else None
     actual_finish = task.actual_finish_date.isoformat() if task.actual_finish_date else None
@@ -85,6 +87,8 @@ def task_payload(task: Task) -> dict[str, Any]:
         "project_code": project.project_code if project else None,
         "project_name": project.project_name if project else None,
         "task_code": task.task_code,
+        "owner_ids": [u.id for u in owners],
+        "owners": [{"id": u.id, "name": u.name} for u in owners],
         "task_name": task.task_name,
         "work_stream": task.work_stream,
         "start_date": task.start_date.isoformat() if task.start_date else None,
@@ -185,6 +189,33 @@ class ManagementQueryService:
         self.users = UserRepository(db)
         self.clock = clock or BusinessClock()
 
+    def get_task(self, actor: User, *, task_code: str | None) -> dict[str, Any]:
+        if not isinstance(task_code, str) or not task_code.strip():
+            raise DomainValidationError("请提供任务业务编号 task_code")
+        task = self.db.scalar(select(Task).where(Task.task_code == task_code.strip().upper()))
+        if task is None or not can_view_task(self.db, actor, task):
+            return {"found": False, "message": "未找到可访问的任务"}
+        return {"found": True, "task": task_payload(task)}
+
+    def get_plan_version(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        from app.core.permissions import can_view_full_project
+        from app.models.planning import PlanVersion
+
+        project = self.projects.get_project(int(args["project_id"]))
+        if not can_view_full_project(self.db, actor, project):
+            raise PermissionDeniedError("需要完整项目读取权限")
+        version = int(args["version"])
+        if version < 1:
+            raise DomainValidationError("version 必须大于 0")
+        row = self.db.scalar(select(PlanVersion).where(
+            PlanVersion.project_id == project.id, PlanVersion.version == version
+        ))
+        if row is None:
+            return {"found": False}
+        return {"found": True, "project_code": project.project_code, "version": row.version,
+                "kind": row.kind, "reason": row.reason, "created_at": row.created_at.isoformat(),
+                "scope": "full_project", "snapshot_included": False}
+
     def get_current_user(self, actor: User) -> dict[str, Any]:
         """Identity from the authenticated session — never from client-forged ids."""
         return {
@@ -230,7 +261,8 @@ class ManagementQueryService:
             return {"found": False, "project_code": project_code}
         self._ensure_project_visible(actor, project)
         tasks = [
-            t for t in self._visible_tasks(actor, project_id=project.id) if t.is_execution_active
+            t for t in self._visible_tasks(actor, project_id=project.id)
+            if t.is_active_branch and t.status != TaskStatus.CANCELLED
         ]
         now = self.clock.now()
         start = now - timedelta(days=days)
@@ -392,7 +424,9 @@ class ManagementQueryService:
                 continue
             if not include_inactive and not task.is_execution_active:
                 continue
-            if owner_filter is not None and task.owner_id != owner_filter:
+            if owner_filter is not None and owner_filter not in (
+                {task.owner_id} | {u.id for u in task_owners(task)}
+            ):
                 continue
             if status_filter is not None and task.status != status_filter:
                 continue
@@ -785,7 +819,7 @@ class ManagementQueryService:
             payloads = [
                 item
                 for item in payloads
-                if item.get("owner_name") and needle in item["owner_name"].lower()
+                if any(needle in u["name"].lower() for u in item.get("owners", []))
             ]
         return payloads
 
@@ -951,8 +985,7 @@ class ManagementQueryService:
             return []
         results: list[dict[str, Any]] = []
         for task in self._visible_tasks(actor):
-            owner = task.owner
-            if owner and needle in owner.name.lower():
+            if any(needle in u.name.lower() for u in task_owners(task)):
                 results.append(_task_payload(task))
         return results
 

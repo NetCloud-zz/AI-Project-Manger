@@ -5,6 +5,7 @@ import { App, Button, Collapse, Input, Radio, Space, Table, Tag } from "antd";
 import dayjs from "dayjs";
 
 import { AppCard } from "@/components/common/AppCard";
+import { ExplanationDisclosure } from "@/components/feedback/ExplanationDisclosure";
 import { ApiError } from "@/lib/http";
 import { adoptAdvice, evaluateAdvice, rejectAdvice } from "@/services/risks";
 import {
@@ -53,42 +54,45 @@ function OptionTable({
 }) {
   if (options.length === 0) return null;
   return (
-    <Table<AdviceOption>
-      size="small"
-      pagination={false}
-      rowKey={(row) => row.name}
-      dataSource={options}
-      columns={[
-        {
-          title: "方案",
-          dataIndex: "name",
-          render: (name: string) => (
-            <Space>
-              <strong>{name}</strong>
-              {name === recommended ? <Tag color="blue">倾向方案</Tag> : null}
-            </Space>
-          ),
-        },
-        { title: "做法", dataIndex: "description" },
-        {
-          title: "时间影响",
-          dataIndex: "time_impact_days",
-          // A null estimate is a real answer: the evidence did not support a number.
-          render: (value: number | null) =>
-            value == null ? <span className="meta-line">无法估算</span> : `${value} 工作日`,
-        },
-        {
-          title: "资源影响",
-          dataIndex: "resource_impact",
-          render: (value: string | null) => value ?? "—",
-        },
-        {
-          title: "该方案的风险",
-          dataIndex: "risks",
-          render: (risks: string[]) => (risks.length ? risks.join("；") : "—"),
-        },
-      ]}
-    />
+    <div className="md-table-wrap advice-option-table">
+      <Table
+        size="small"
+        pagination={false}
+        scroll={{ x: true }}
+        rowKey={(row) => row.name}
+        dataSource={options}
+        columns={[
+          {
+            title: "方案",
+            dataIndex: "name",
+            render: (name: string) => (
+              <Space>
+                <strong>{name}</strong>
+                {name === recommended ? <Tag color="blue">倾向方案</Tag> : null}
+              </Space>
+            ),
+          },
+          { title: "做法", dataIndex: "description" },
+          {
+            title: "时间影响",
+            dataIndex: "time_impact_days",
+            // A null estimate is a real answer: the evidence did not support a number.
+            render: (value: number | null) =>
+              value == null ? <span className="meta-line">无法估算</span> : `${value} 工作日`,
+          },
+          {
+            title: "资源影响",
+            dataIndex: "resource_impact",
+            render: (value: string | null) => value ?? "—",
+          },
+          {
+            title: "该方案的风险",
+            dataIndex: "risks",
+            render: (risks: string[]) => (risks.length ? risks.join("；") : "—"),
+          },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -109,6 +113,10 @@ export function AdviceCard({
 
   const content = record.content;
   const decidable = record.status === "PROPOSED";
+  const nextActions = content.recommended_next_actions ?? [];
+  const previewActions = nextActions.slice(0, 3);
+  const recommended =
+    content.options.find((option) => option.name === content.recommended_option) ?? null;
 
   const run = (call: () => Promise<AdviceRecord>, note: string) => {
     setBusy(true);
@@ -151,11 +159,21 @@ export function AdviceCard({
 
       <p>{content.problem_summary}</p>
 
-      <OptionTable options={content.options} recommended={content.recommended_option} />
+      {recommended ? (
+        <p className="detail-text">
+          倾向方案：<strong>{recommended.name}</strong>
+          {recommended.description ? ` — ${recommended.description}` : ""}
+        </p>
+      ) : content.recommended_option ? (
+        <p className="detail-text">
+          倾向方案：<strong>{content.recommended_option}</strong>
+        </p>
+      ) : null}
 
-      <Bullets title="可能原因（待验证假设）" items={content.possible_causes} />
-      <Bullets title="需要核实" items={content.checks} />
-      <Bullets title="建议的下一步" items={content.recommended_next_actions} />
+      <Bullets title="建议的下一步" items={previewActions} />
+      {nextActions.length > 3 ? (
+        <p className="meta-line">另有 {nextActions.length - 3} 条下一步，见详情。</p>
+      ) : null}
 
       {content.data_gaps.length > 0 ? (
         <div>
@@ -168,9 +186,25 @@ export function AdviceCard({
         </div>
       ) : null}
 
-      {content.suggested_participants.length > 0 ? (
-        <p className="meta-line">建议参与：{content.suggested_participants.join("、")}</p>
-      ) : null}
+      <ExplanationDisclosure
+        summary={<p className="meta-line">原因、核实项与方案全表</p>}
+        expandCount={
+          content.possible_causes.length +
+          content.checks.length +
+          content.options.length +
+          Math.max(0, nextActions.length - 3)
+        }
+      >
+        <OptionTable options={content.options} recommended={content.recommended_option} />
+        <Bullets title="可能原因（待验证假设）" items={content.possible_causes} />
+        <Bullets title="需要核实" items={content.checks} />
+        {nextActions.length > 3 ? (
+          <Bullets title="全部建议下一步" items={nextActions} />
+        ) : null}
+        {content.suggested_participants.length > 0 ? (
+          <p className="meta-line">建议参与：{content.suggested_participants.join("、")}</p>
+        ) : null}
+      </ExplanationDisclosure>
 
       <Collapse
         ghost

@@ -37,6 +37,7 @@ from app.schemas.task import (
     TaskUpdate,
 )
 from app.services.action_item import ActionItemService
+from app.services.agent_change_policy import audit_change_reason, require_change_reason
 from app.services.exceptions import (
     DomainValidationError,
     OwnerNotFoundError,
@@ -301,6 +302,7 @@ class ManagementWriteService:
         return {"ok": True, "action": "create_project", "project": project_payload(project)}
 
     def update_project(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        require_change_reason("update_project", args)
         project = self._resolve_project(
             project_id=args.get("project_id"),
             project_code=_optional_str(args, "project_code"),
@@ -347,6 +349,7 @@ class ManagementWriteService:
             project = self.projects.update_project(
                 project.id, ProjectUpdate(**updates), actor=actor
             )
+        audit_change_reason(self.db, actor, "update_project", project.id, args)
         self._commit()
         self.db.refresh(project)
         return {"ok": True, "action": "update_project", "project": project_payload(project)}
@@ -389,6 +392,7 @@ class ManagementWriteService:
         return {"ok": True, "action": "create_task", "task": task_payload(task)}
 
     def update_task(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        require_change_reason("update_task", args)
         task_id = args.get("task_id")
         if task_id is None:
             msg = "task_id is required"
@@ -445,10 +449,17 @@ class ManagementWriteService:
         core_keys = {"task_name", "work_stream", "owner_id", "start_date", "due_date"} | set(
             TaskPlanningFields.model_fields
         )
-        if not allow_core and core_keys.intersection(updates):
-            raise PermissionDeniedError(
-                "You can only update status or progress_percent on this task"
-            )
+        if not allow_core:
+            # Restating a core field's current value (e.g. the caller's own owner_id) is no change.
+            for key in core_keys.intersection(updates):
+                if getattr(task, key, None) == updates[key]:
+                    updates.pop(key)
+            if core_keys.intersection(updates):
+                raise PermissionDeniedError(
+                    "You can only update status or progress_percent on this task"
+                )
+            if not updates:
+                raise DomainValidationError("No task fields to update")
 
         task = self.tasks.update_task(
             task.id,
@@ -459,6 +470,7 @@ class ManagementWriteService:
                 int(args["expected_version"]) if args.get("expected_version") is not None else None
             ),
         )
+        audit_change_reason(self.db, actor, "update_task", task.id, args)
         self._commit()
         self.db.refresh(task)
         return {"ok": True, "action": "update_task", "task": task_payload(task)}
@@ -490,6 +502,7 @@ class ManagementWriteService:
         )
 
     def reschedule_task(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        reason = require_change_reason("reschedule_task", args)
         payload: dict[str, Any] = {
             "task_id": args.get("task_id"),
             "target_task_name": args.get("target_task_name"),
@@ -513,6 +526,7 @@ class ManagementWriteService:
                 payload["due_date"] = (task.due_date + timedelta(days=days)).isoformat()
             if task.start_date is not None and args.get("shift_start", True):
                 payload["start_date"] = (task.start_date + timedelta(days=days)).isoformat()
+        payload["change_reason"] = reason
         return self.update_task(actor, payload)
 
     def create_milestone(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
@@ -670,6 +684,7 @@ class ManagementWriteService:
         }
 
     def update_action_item(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
+        require_change_reason("update_action_item", args)
         action_item_id = args.get("action_item_id")
         if action_item_id is None:
             msg = "action_item_id is required"
@@ -712,6 +727,7 @@ class ManagementWriteService:
         item = self.action_items.update_action_item(
             item.id, ActionItemUpdate(**updates), actor=actor
         )
+        audit_change_reason(self.db, actor, "update_action_item", item.id, args)
         self._commit()
         self.db.refresh(item)
         return {

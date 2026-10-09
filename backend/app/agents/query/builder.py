@@ -47,6 +47,20 @@ def match_filter(row: Any, filt: QueryFilter, *, fields: dict[str, str], today: 
     if fields.get(filt.field) == "__computed__":
         return _match_computed(row, filt, today=today, fields=fields)
     path = fields[filt.field]
+    if fields.get("task_code") == "task_code" and filt.field in {"owner_id", "owner_name"}:
+        from app.services.agent_task_owners import task_owners
+
+        values = [u.id if filt.field == "owner_id" else u.name for u in task_owners(row)]
+        if filt.field == "owner_id" and getattr(row, "owner_id", None) is not None:
+            values.append(row.owner_id)
+        if filt.op == "is_null":
+            return (not values) == (True if filt.value is None else bool(filt.value))
+        positive_op = {"ne": "eq", "not_in": "in"}.get(filt.op, filt.op)
+        matched = any(match_filter(
+            {"value": v}, QueryFilter(field="value", op=positive_op, value=filt.value),
+            fields={"value": "value"}, today=today,
+        ) for v in values)
+        return not matched if filt.op in {"ne", "not_in"} else matched
     actual = _resolve_attr(row, path)
     op = filt.op
     expected = filt.value

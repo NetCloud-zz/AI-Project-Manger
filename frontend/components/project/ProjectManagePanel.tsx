@@ -174,7 +174,7 @@ export function ProjectManagePanel({ project, canManage, onChanged }: Props) {
         <div className="meta-line">
           <TeamOutlined /> 负责人：{ownerNames}
           {canManage ? (
-            <Button type="link" size="small" onClick={openOwners}>
+            <Button size="small" onClick={openOwners}>
               编辑
             </Button>
           ) : null}
@@ -182,14 +182,14 @@ export function ProjectManagePanel({ project, canManage, onChanged }: Props) {
         <div className="meta-line">
           <CalendarOutlined /> 整体时间：{scheduleLabel || "未设置"}
           {canManage ? (
-            <Button type="link" size="small" onClick={openSchedule}>
+            <Button size="small" onClick={openSchedule}>
               调整
             </Button>
           ) : null}
         </div>
         {canManage ? (
           <div className="meta-line">
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={openDelete}>
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={openDelete}>
               删除项目
             </Button>
           </div>

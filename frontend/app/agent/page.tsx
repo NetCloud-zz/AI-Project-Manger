@@ -2,22 +2,24 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { App, Button, Drawer, Input, Spin } from "antd";
+import { App, Button, Drawer, Spin } from "antd";
 import {
   BookOutlined,
   CopyOutlined,
   MenuOutlined,
   ReloadOutlined,
   RobotOutlined,
-  SendOutlined,
-  StopOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { AgentCards } from "@/components/agent/AgentCards";
+import {
+  AgentComposer,
+  type AgentComposerHandle,
+} from "@/components/agent/AgentComposer";
+import { AssistantAnswer } from "@/components/agent/AssistantAnswer";
 import { ConversationSidebar } from "@/components/agent/ConversationSidebar";
-import { MarkdownRenderer } from "@/components/agent/MarkdownRenderer";
 import { MemoryPanel } from "@/components/agent/MemoryPanel";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -36,7 +38,11 @@ import {
   updateConversation,
 } from "@/services/agent";
 import { ApiError } from "@/lib/http";
+import { newClientId } from "@/lib/id";
 import type { AgentCard, AgentConversation, AgentMessage, ToolActivity } from "@/types/agent";
+
+/** Container width (in rem) below which the conversation list uses a drawer. */
+const AGENT_SIDEBAR_RAIL_MIN_REM = 48;
 
 const AGENT_MESSAGE_MAX_CHARS = 2_000_000;
 
@@ -192,15 +198,65 @@ function AgentPageInner() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
   const [stickToBottom, setStickToBottom] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarRail, setSidebarRail] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<AgentComposerHandle>(null);
+  const stickToBottomRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
   const bootstrapped = useRef(false);
+  /** Snapshot of the text that was submitted; never overwrite a newer draft with it. */
+  const sentSnapshotRef = useRef<string | null>(null);
+  const focusRestoreRef = useRef<{
+    conversationId: number | null;
+    allow: boolean;
+  }>({ conversationId: null, allow: false });
+  const userLeftComposerRef = useRef(false);
+  const memoryOpenRef = useRef(false);
+  const drawerOpenRef = useRef(false);
 
   const [sidebarQuery, setSidebarQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const agentRequestIdRef = useRef<number | null>(null);
   const activeIdRef = useRef<number | null>(null);
   const resumePollTokenRef = useRef(0);
+
+  useEffect(() => {
+    stickToBottomRef.current = stickToBottom;
+  }, [stickToBottom]);
+
+  useEffect(() => {
+    memoryOpenRef.current = memoryOpen;
+    if (memoryOpen) {
+      focusRestoreRef.current.allow = false;
+      userLeftComposerRef.current = true;
+    }
+  }, [memoryOpen]);
+
+  useEffect(() => {
+    drawerOpenRef.current = drawerOpen;
+    if (drawerOpen) {
+      focusRestoreRef.current.allow = false;
+      userLeftComposerRef.current = true;
+    }
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    const el = pageRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const update = (width: number) => {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      setSidebarRail(width >= AGENT_SIDEBAR_RAIL_MIN_REM * rem);
+    };
+    update(el.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width != null) update(width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const suggestions =
     SUGGESTED_BY_ROLE[user?.role ?? ""] ?? SUGGESTED_BY_ROLE.MEMBER;
@@ -216,16 +272,62 @@ function AgentPageInner() {
     requestAnimationFrame(() => {
       const el = listRef.current;
       if (!el) return;
-      if (!force && !stickToBottom) return;
+      // UX-07: read latest stick flag via ref so stream callbacks are not stale.
+      if (!force && !stickToBottomRef.current) return;
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     });
-  }, [stickToBottom]);
+  }, []);
+
+  const clearInputIfUnchanged = useCallback((snapshot: string) => {
+    setInput((prev) => (prev === snapshot ? "" : prev));
+  }, []);
+
+  const restoreSnapshotIfNoDraft = useCallback((snapshot: string) => {
+    setInput((prev) => (prev.trim() ? prev : snapshot));
+  }, []);
+
+  const maybeRestoreComposerFocus = useCallback((conversationId: number) => {
+    const intent = focusRestoreRef.current;
+    if (!intent.allow) return;
+    if (intent.conversationId !== conversationId) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
+    if (userLeftComposerRef.current) return;
+    if (memoryOpenRef.current || drawerOpenRef.current) return;
+    if (activeIdRef.current != null && activeIdRef.current !== conversationId) {
+      return;
+    }
+    // Wait until sending flips off and textarea is interactive.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!focusRestoreRef.current.allow) return;
+        if (userLeftComposerRef.current) return;
+        if (memoryOpenRef.current || drawerOpenRef.current) return;
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+          return;
+        }
+        composerRef.current?.focus({ preventScroll: true });
+      });
+    });
+  }, []);
+
+  const armFocusRestore = useCallback((conversationId: number) => {
+    focusRestoreRef.current = { conversationId, allow: true };
+    userLeftComposerRef.current = false;
+  }, []);
+
+  const disarmFocusRestore = useCallback(() => {
+    focusRestoreRef.current.allow = false;
+  }, []);
 
   const onMessagesScroll = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setStickToBottom(distance < 80);
+    const next = distance < 80;
+    stickToBottomRef.current = next;
+    setStickToBottom(next);
   }, []);
 
   const setConversationInUrl = useCallback(
@@ -261,6 +363,7 @@ function AgentPageInner() {
         activeIdRef.current = conversationId;
         setConversationInUrl(conversationId);
         setStickToBottom(true);
+        stickToBottomRef.current = true;
         scrollToBottom(true);
         setLoadingMessages(false);
 
@@ -423,6 +526,8 @@ function AgentPageInner() {
       }
       agentRequestIdRef.current = null;
       setSending(false);
+      disarmFocusRestore();
+      userLeftComposerRef.current = true;
       const created = await createConversation();
       setConversations((prev) => [created, ...prev]);
       setActiveId(created.id);
@@ -434,7 +539,7 @@ function AgentPageInner() {
     } catch {
       message.error("创建对话失败");
     }
-  }, [message, setConversationInUrl]);
+  }, [disarmFocusRestore, message, setConversationInUrl]);
 
   const onSelect = useCallback(
     async (id: number) => {
@@ -454,11 +559,13 @@ function AgentPageInner() {
       }
       agentRequestIdRef.current = null;
       setSending(false);
+      disarmFocusRestore();
+      userLeftComposerRef.current = true;
       setDrawerOpen(false);
       setToolActivities([]);
       await loadMessages(id);
     },
-    [loadMessages],
+    [disarmFocusRestore, loadMessages],
   );
 
   const onRename = useCallback(
@@ -530,7 +637,10 @@ function AgentPageInner() {
     agentRequestIdRef.current = null;
     setSending(false);
     setToolActivities([]);
-  }, [activeId]);
+    if (conversationId != null) {
+      maybeRestoreComposerFocus(conversationId);
+    }
+  }, [activeId, maybeRestoreComposerFocus]);
 
   // Leave page / switch away: abort SSE and unlock generation slot.
   useEffect(() => {
@@ -570,6 +680,7 @@ function AgentPageInner() {
       abortRef.current = controller;
       setSending(true);
       setToolActivities([]);
+      stickToBottomRef.current = true;
       setStickToBottom(true);
 
       let userMessageId: number | null = opts.optimisticUser?.id ?? null;
@@ -655,7 +766,8 @@ function AgentPageInner() {
                 agentRequestIdRef.current = reqId;
               }
               if (opts.mode === "send") {
-                setInput("");
+                const snapshot = sentSnapshotRef.current ?? opts.content ?? "";
+                if (snapshot) clearInputIfUnchanged(snapshot);
               }
               if (Number.isFinite(mid)) {
                 assistantId = mid;
@@ -785,7 +897,7 @@ function AgentPageInner() {
                 completed_at: new Date().toISOString(),
               });
               if (opts.mode === "send" && opts.content) {
-                setInput(opts.content);
+                restoreSnapshotIfNoDraft(opts.content);
               }
               setToolActivities([]);
               message.error(String(data.message ?? "生成失败"));
@@ -838,7 +950,9 @@ function AgentPageInner() {
         void refreshConversations();
         setActiveId(opts.conversationId);
         setConversationInUrl(opts.conversationId);
-        scrollToBottom(true);
+        // UX-07: terminal follow only if user is still near the bottom.
+        scrollToBottom(false);
+        maybeRestoreComposerFocus(opts.conversationId);
       } catch (err) {
         if (controller.signal.aborted) {
           patchAssistant({
@@ -846,10 +960,11 @@ function AgentPageInner() {
             completed_at: new Date().toISOString(),
           });
           setToolActivities([]);
+          maybeRestoreComposerFocus(opts.conversationId);
           return;
         }
         if (opts.mode === "send" && opts.content) {
-          setInput(opts.content);
+          restoreSnapshotIfNoDraft(opts.content);
         }
         message.error("发送失败，请稍后重试");
         try {
@@ -858,14 +973,26 @@ function AgentPageInner() {
           /* ignore */
         }
         void err;
+        maybeRestoreComposerFocus(opts.conversationId);
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         setSending(false);
         setToolActivities([]);
+        if (opts.mode === "send") {
+          sentSnapshotRef.current = null;
+        }
         void userMessageId;
       }
     },
-    [message, refreshConversations, scrollToBottom, setConversationInUrl],
+    [
+      clearInputIfUnchanged,
+      maybeRestoreComposerFocus,
+      message,
+      refreshConversations,
+      restoreSnapshotIfNoDraft,
+      scrollToBottom,
+      setConversationInUrl,
+    ],
   );
 
   const sendMessage = useCallback(
@@ -878,13 +1005,13 @@ function AgentPageInner() {
         );
         return;
       }
-      // Keep draft until message_start confirms server accepted the turn (F05).
-      const clientRequestId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const clientRequestId = newClientId("req");
+      sentSnapshotRef.current = trimmed;
+      // Free the field for the next draft immediately; message_start only clears if unchanged.
+      setInput("");
       try {
         const conversationId = await ensureConversation();
+        armFocusRestore(conversationId);
         const optimisticUser: AgentMessage = {
           id: -Date.now(),
           conversation_id: conversationId,
@@ -906,24 +1033,25 @@ function AgentPageInner() {
           clientRequestId,
         });
       } catch (error) {
-        setInput(trimmed);
+        restoreSnapshotIfNoDraft(trimmed);
         message.error(sendErrorText(error));
         setSending(false);
       }
     },
-    [ensureConversation, message, runStream, sending],
+    [armFocusRestore, ensureConversation, message, restoreSnapshotIfNoDraft, runStream, sending],
   );
 
   const onRegenerate = useCallback(
     async (assistantMessage: AgentMessage) => {
       if (sending || activeId == null) return;
+      armFocusRestore(activeId);
       await runStream({
         conversationId: activeId,
         mode: "regenerate",
         assistantMessageId: assistantMessage.id,
       });
     },
-    [activeId, runStream, sending],
+    [activeId, armFocusRestore, runStream, sending],
   );
 
   const onSelectVersion = useCallback(
@@ -953,7 +1081,7 @@ function AgentPageInner() {
     [message],
   );
 
-  const sidebar = (
+  const renderSidebar = (collapsible: boolean) => (
     <ConversationSidebar
       conversations={conversations}
       activeId={activeId}
@@ -966,13 +1094,37 @@ function AgentPageInner() {
       onRename={(id, title) => void onRename(id, title)}
       onArchive={(id) => void onArchive(id)}
       onRestore={(id) => void onRestore(id)}
+      onCollapse={
+        collapsible
+          ? () => {
+              setSidebarCollapsed(true);
+            }
+          : undefined
+      }
     />
   );
 
+  const pageClassName = [
+    "agent-page",
+    "agent-page--with-sidebar",
+    sidebarRail ? "agent-page--rail" : "agent-page--drawer-layout",
+    sidebarCollapsed ? "agent-page--sidebar-collapsed" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const openConversationMenu = () => {
+    if (sidebarRail && sidebarCollapsed) {
+      setSidebarCollapsed(false);
+      return;
+    }
+    setDrawerOpen(true);
+  };
+
   return (
     <div className="agent-page-wrap">
-      <div className="agent-page agent-page--with-sidebar">
-        <div className="agent-page__sidebar-desktop">{sidebar}</div>
+      <div ref={pageRef} className={pageClassName}>
+        <div className="agent-page__sidebar-desktop">{renderSidebar(true)}</div>
 
         <div className="agent-page__main">
           <div className="agent-page__header">
@@ -980,12 +1132,12 @@ function AgentPageInner() {
               className="agent-page__menu"
               type="text"
               icon={<MenuOutlined />}
-              onClick={() => setDrawerOpen(true)}
-              aria-label="打开对话列表"
+              onClick={openConversationMenu}
+              aria-label="对话"
+              title="对话"
             />
             <PageHeader
-              title="项目助手"
-              
+              title="AI助手"
               action={
                 <Button icon={<BookOutlined />} onClick={() => setMemoryOpen(true)}>
                   记忆
@@ -1002,10 +1154,6 @@ function AgentPageInner() {
             <>
               {messages.length === 0 && !loadingMessages ? (
                 <div className="agent-empty">
-                  <h2 className="agent-empty__title">项目助手</h2>
-                  <p className="agent-empty__desc">
-                    我可以帮助你查询项目、任务、风险、问题和行动项。对话会保存在左侧列表中。
-                  </p>
                   <div className="agent-suggestions agent-suggestions--wrap">
                     {workEntries.map((question) => (
                       <button
@@ -1077,7 +1225,11 @@ function AgentPageInner() {
                       <div className="agent-bubble__content">
                         {item.role === "ASSISTANT" ? (
                           item.content ? (
-                            <MarkdownRenderer content={item.content} />
+                            <AssistantAnswer
+                              messageKey={`${item.id}-${item.answer_version ?? 0}`}
+                              content={item.content}
+                              streaming={item.status === "STREAMING"}
+                            />
                           ) : item.status === "STREAMING" ? (
                             "…"
                           ) : (
@@ -1165,6 +1317,7 @@ function AgentPageInner() {
                     type="button"
                     className="agent-scroll-bottom"
                     onClick={() => {
+                      stickToBottomRef.current = true;
                       setStickToBottom(true);
                       scrollToBottom(true);
                     }}
@@ -1177,39 +1330,23 @@ function AgentPageInner() {
           )}
 
           <div className="agent-input-bar">
-            <div className="agent-input-bar__row">
-              <Input.TextArea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="输入问题，例如：PRJ-1001 现在怎么样？"
-                autoSize={{ minRows: 1, maxRows: 12 }}
-                maxLength={AGENT_MESSAGE_MAX_CHARS}
-                onPressEnter={(event) => {
-                  if (!event.shiftKey && !(event.nativeEvent as KeyboardEvent).isComposing) {
-                    event.preventDefault();
-                    void sendMessage(input);
-                  }
-                }}
-                disabled={sending || loadingList}
-              />
-              {showStop ? (
-                <Button
-                  danger
-                  icon={<StopOutlined />}
-                  onClick={stopGeneration}
-                >
-                  停止
-                </Button>
-              ) : (
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  aria-label="发送消息"
-                  onClick={() => void sendMessage(input)}
-                  disabled={loadingList}
-                />
-              )}
-            </div>
+            <AgentComposer
+              ref={composerRef}
+              value={input}
+              onChange={setInput}
+              onSend={() => void sendMessage(input)}
+              onStop={stopGeneration}
+              sending={sending}
+              showStop={showStop}
+              disabled={loadingList}
+              maxLength={AGENT_MESSAGE_MAX_CHARS}
+              onEnterComposer={() => {
+                userLeftComposerRef.current = false;
+              }}
+              onLeaveComposer={() => {
+                userLeftComposerRef.current = true;
+              }}
+            />
           </div>
         </div>
       </div>
@@ -1219,10 +1356,10 @@ function AgentPageInner() {
         placement="left"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={280}
+        width="min(20rem, 88%)"
         styles={{ body: { padding: 0 } }}
       >
-        {sidebar}
+        {renderSidebar(false)}
       </Drawer>
 
       <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />

@@ -80,12 +80,27 @@ class ExecutorBoundTool(ToolBase):
         return ToolChunk(content=[TextBlock(text=envelope.to_json())])
 
 
-def build_management_toolkit(executor: ManagementToolExecutor) -> Toolkit:
-    """Register every MANAGEMENT_TOOLS entry against ``executor``."""
-    from app.agents.management_tools import MANAGEMENT_TOOLS
+def build_management_toolkit(
+    executor: ManagementToolExecutor, *, toolsets_enabled: bool = False
+) -> Toolkit:
+    """Bind tools to ``executor``: core in ``basic``, the rest as native ToolGroups."""
+    from app.agents.toolsets import TOOLSETS, all_tools, core_tools, group_tools
 
-    tools = [
-        ExecutorBoundTool(definition, executor, write_tools=WRITE_TOOLS)
-        for definition in MANAGEMENT_TOOLS
+    def bind(definitions: list[ToolDefinition]) -> list[ToolBase]:
+        return [ExecutorBoundTool(item, executor, write_tools=WRITE_TOOLS) for item in definitions]
+
+    if not toolsets_enabled:
+        return Toolkit(tools=bind(all_tools()))
+
+    from agentscope.tool import ToolGroup
+
+    groups = [
+        ToolGroup(
+            name=toolset.name,
+            description=toolset.description,
+            instructions=toolset.instructions,
+            tools=bind(group_tools(toolset.name)),
+        )
+        for toolset in TOOLSETS
     ]
-    return Toolkit(tools=tools)
+    return Toolkit(tools=bind(core_tools()), tool_groups=groups)

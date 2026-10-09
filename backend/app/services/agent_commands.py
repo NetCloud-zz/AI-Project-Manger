@@ -46,12 +46,37 @@ PARALLEL_READS = frozenset(
         "list_projects",
         "get_project_progress_overview",
         "query_entities",
+        "get_database_tools",
+        "get_task",
+        "get_plan_version",
         "batch_find_users",
         "find_users",
     }
 )
 
 _RECOVERABLE_ITEM_STATES = frozenset({"FAILED", "BLOCKED", "PENDING", "ROLLED_BACK"})
+# Update handlers silently ignore unknown keys, so a misspelled field becomes a no-op.
+_STRICT_ARGUMENT_TOOLS = frozenset(
+    {
+        "update_project",
+        "update_task",
+        "assign_task",
+        "change_task_status",
+        "reschedule_task",
+        "update_issue",
+        "update_action_item",
+    }
+)
+_LOCATOR_ARGUMENTS = frozenset({"project_id", "project_code", "target_task_name"})
+
+
+def _tool_properties(tool: str) -> set[str]:
+    from app.agents.management_tools import MANAGEMENT_TOOLS
+
+    for definition in MANAGEMENT_TOOLS:
+        if definition.name == tool:
+            return set((definition.parameters or {}).get("properties") or {})
+    return set()
 
 
 def build_requirement_inventory(proposal: CommandPlanInput) -> list[dict[str, Any]]:
@@ -328,6 +353,7 @@ class CommandService:
         details: dict[str, Any] | None = None,
     ) -> AgentCommandPlan:
         from app.agents.management_tools import MANAGEMENT_TOOLS, WRITE_TOOLS
+        from app.services.agent_batch import batch_create_argument_errors
 
         spans = validate_coverage(proposal, source)
         # Product default: best-effort independent writes unless user asks all-or-nothing.
@@ -336,6 +362,18 @@ class CommandService:
         for item in proposal.items:
             if item.tool not in known:
                 raise DomainValidationError(f"未知工具：{item.tool}")
+            if item.tool == "batch_create_tasks":
+                problems = batch_create_argument_errors(item.arguments)
+                if problems:
+                    raise DomainValidationError(f"{item.item_id}：" + "；".join(problems))
+            if item.tool in _STRICT_ARGUMENT_TOOLS:
+                allowed = _tool_properties(item.tool) | _LOCATOR_ARGUMENTS
+                unknown = sorted(set(item.arguments) - allowed)
+                if unknown:
+                    raise DomainValidationError(
+                        f"{item.item_id}：{item.tool} 不支持参数 {'、'.join(unknown)}；"
+                        f"可用参数：{'、'.join(sorted(allowed))}"
+                    )
             if policy == "atomic" and item.tool in WRITE_TOOLS and item.tool not in ATOMIC_TOOLS:
                 raise DomainValidationError(
                     f"{item.tool} 需要专用业务流程，不支持普通原子批次，未执行任何操作"
@@ -738,6 +776,7 @@ class CommandService:
                             i.id,
                             plan.source,
                             resolved[i.item_id],
+                            plan_guard_authorized(plan),
                         )
                         for i in write_batch
                     ]
@@ -775,7 +814,11 @@ class CommandService:
                 # Savepoint isolates validation failures, including flush errors.
                 savepoint = self.db.begin_nested()
                 executor = ManagementToolExecutor(
-                    self.db, actor, auto_commit=False, source_message=plan.source
+                    self.db,
+                    actor,
+                    auto_commit=False,
+                    source_message=plan.source,
+                    write_authorized=plan_guard_authorized(plan),
                 )
                 try:
                     result = (
@@ -957,6 +1000,14 @@ def _read(bind: Engine | Connection, actor_id: int, tool: str, args: dict[str, A
         return ToolResult.failure("INTERNAL_ERROR", "独立查询失败")
 
 
+def plan_guard_authorized(plan: AgentCommandPlan) -> bool | None:
+    """Write verdict recorded at planning time; ``None`` keeps the regex guard."""
+    authorization = (plan.planning_details or {}).get("authorization") or {}
+    if authorization.get("mode") != "hybrid":
+        return None
+    return bool(authorization.get("authorized"))
+
+
 def _write(
     bind: Engine | Connection,
     actor_id: int,
@@ -964,6 +1015,7 @@ def _write(
     item_id: int,
     source: str,
     args: dict[str, Any],
+    write_authorized: bool | None = None,
 ) -> None:
     from app.agents.management_tools import ManagementToolExecutor
     from app.agents.tool_result import ToolResult
@@ -986,7 +1038,11 @@ def _write(
         savepoint = db.begin_nested() if primitive else None
         try:
             result = ManagementToolExecutor(
-                db, actor, auto_commit=not primitive, source_message=source
+                db,
+                actor,
+                auto_commit=not primitive,
+                source_message=source,
+                write_authorized=write_authorized,
             ).execute_result(item.tool, args, tool_call_id=f"command-{request_id}-{item.item_id}")
             if savepoint is not None:
                 if result.ok:

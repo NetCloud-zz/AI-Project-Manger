@@ -18,6 +18,7 @@ import { TASK_STATUS_OPTIONS, TaskStatusTag } from "@/components/project/StatusT
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ProgressHistory } from "@/components/task/ProgressHistory";
 import { ApiError } from "@/lib/http";
+import { canActOnTask, canManageProject } from "@/lib/permissions";
 import { taskOwnerLabel } from "@/lib/task-owners";
 import { fetchProject } from "@/services/projects";
 import { deleteTask, fetchTask, updateTask } from "@/services/tasks";
@@ -86,23 +87,11 @@ function TaskDetailInner() {
         setTask(taskData);
         setProgress(progressData);
         setLoadError(null);
-        if (user?.role === "ADMIN") {
-          setCanDelete(true);
-        } else if (user?.role === "PROJECT_OWNER") {
-          try {
-            const project = await fetchProject(taskData.project_id);
-            const ownerIds = new Set(
-              (project.owners?.length
-                ? project.owners.map((item) => item.id)
-                : [project.owner_id]
-              ).filter(Boolean),
-            );
-            setCanDelete(ownerIds.has(user.id));
-          } catch {
-            setCanDelete(false);
-          }
-        } else {
-          setCanDelete(false);
+        try {
+          const project = await fetchProject(taskData.project_id);
+          if (!cancelled) setCanDelete(canManageProject(user, project));
+        } catch {
+          if (!cancelled) setCanDelete(user?.role === "ADMIN");
         }
       })
       .catch((error: unknown) => {
@@ -122,12 +111,8 @@ function TaskDetailInner() {
     setReloadKey((value) => value + 1);
   }, []);
 
-  const canUpdateStatus = Boolean(
-    user &&
-      task &&
-      (user.role === "ADMIN" || task.owner_id === user.id || user.role === "PROJECT_OWNER"),
-  );
-  const canManageBranches = Boolean(canDelete);
+  const canUpdateStatus = canActOnTask(user, task?.owner_id, canDelete);
+  const canManageBranches = canDelete;
 
   const onStatusChange = async (status: TaskStatus) => {
     if (!task) return;

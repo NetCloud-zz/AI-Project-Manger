@@ -5,8 +5,9 @@ from __future__ import annotations
 from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.permissions import project_ids_owned_by
 from app.models.planning import ProjectMember
-from app.models.project import Project, ProjectStatus, project_owners
+from app.models.project import Project, ProjectStatus
 from app.models.task import Task
 from app.models.user import User, UserRole
 
@@ -38,20 +39,17 @@ class ProjectRepository:
         stmt = self._with_owners().order_by(Project.id.desc())
         if user.role in (UserRole.ADMIN, UserRole.EXECUTIVE):
             return list(self.db.scalars(stmt).unique().all())
+        # Ownership is role-agnostic; membership / task participation add visibility.
         explicit = select(ProjectMember.project_id).where(
             ProjectMember.user_id == user.id, ProjectMember.is_active.is_(True)
         )
-        if user.role == UserRole.PROJECT_OWNER:
-            co_owned = select(project_owners.c.project_id).where(
-                project_owners.c.user_id == user.id
-            )
-            stmt = stmt.where(
-                or_(Project.owner_id == user.id, Project.id.in_(co_owned), Project.id.in_(explicit))
-            )
-            return list(self.db.scalars(stmt).unique().all())
-        participated = select(Task.project_id).where(Task.owner_id == user.id).distinct().subquery()
+        participated = select(Task.project_id).where(Task.owner_id == user.id)
         stmt = stmt.where(
-            or_(Project.id.in_(select(participated.c.project_id)), Project.id.in_(explicit))
+            or_(
+                Project.id.in_(project_ids_owned_by(user.id)),
+                Project.id.in_(participated),
+                Project.id.in_(explicit),
+            )
         )
         return list(self.db.scalars(stmt).unique().all())
 

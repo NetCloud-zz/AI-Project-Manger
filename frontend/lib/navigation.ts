@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  AppstoreOutlined,
   BellOutlined,
   DashboardOutlined,
   HomeOutlined,
@@ -18,37 +19,85 @@ export type NavItem = {
   icon: ComponentType;
 };
 
-const BASE_NAV: NavItem[] = [
-  { href: "/", label: "首页", icon: HomeOutlined },
-  { href: "/my-tasks", label: "我的任务", shortLabel: "任务", icon: UnorderedListOutlined },
-  { href: "/projects", label: "项目", icon: ProjectOutlined },
-];
+const HOME: NavItem = { href: "/", label: "首页", icon: HomeOutlined };
+const TASKS: NavItem = {
+  href: "/my-tasks",
+  label: "我的任务",
+  shortLabel: "任务",
+  icon: UnorderedListOutlined,
+};
+const PROJECTS: NavItem = { href: "/projects", label: "项目", icon: ProjectOutlined };
+const AGENT: NavItem = {
+  href: "/agent",
+  label: "项目助手",
+  shortLabel: "助手",
+  icon: RobotOutlined,
+};
+const NOTIFICATIONS: NavItem = {
+  href: "/notifications",
+  label: "通知中心",
+  shortLabel: "通知",
+  icon: BellOutlined,
+};
+const DASHBOARD: NavItem = {
+  href: "/dashboard",
+  label: "管理看板",
+  shortLabel: "看板",
+  icon: DashboardOutlined,
+};
+const USERS: NavItem = {
+  href: "/users",
+  label: "用户管理",
+  shortLabel: "用户",
+  icon: TeamOutlined,
+};
+
+export const MORE_NAV_ITEM: NavItem = {
+  href: "#more",
+  label: "更多",
+  shortLabel: "更多",
+  icon: AppstoreOutlined,
+};
 
 export function getNavItems(user: UserProfile | null): NavItem[] {
   if (!user) return [];
 
   const canViewDashboard =
     user.role === "ADMIN" || user.role === "EXECUTIVE" || user.role === "PROJECT_OWNER";
-  // PHASE F: all authenticated roles can open Project Assistant (tools still RBAC-gated).
-  const canUseAgent = true;
   const canManageUsers = user.role === "ADMIN";
 
   return [
-    ...BASE_NAV,
-    ...(canViewDashboard
-      ? [{ href: "/dashboard", label: "管理看板", shortLabel: "看板", icon: DashboardOutlined }]
-      : []),
-    ...(canUseAgent
-      ? [{ href: "/agent", label: "项目助手", shortLabel: "助手", icon: RobotOutlined }]
-      : []),
-    { href: "/notifications", label: "通知中心", shortLabel: "通知", icon: BellOutlined },
-    ...(canManageUsers
-      ? [{ href: "/users", label: "用户管理", shortLabel: "用户", icon: TeamOutlined }]
-      : []),
+    HOME,
+    TASKS,
+    PROJECTS,
+    ...(canViewDashboard ? [DASHBOARD] : []),
+    AGENT,
+    NOTIFICATIONS,
+    ...(canManageUsers ? [USERS] : []),
+  ];
+}
+
+/** Mobile bottom bar: at most five primary destinations. */
+export function getMobilePrimaryNav(user: UserProfile | null): NavItem[] {
+  if (!user) return [];
+  return [TASKS, PROJECTS, AGENT, NOTIFICATIONS, MORE_NAV_ITEM];
+}
+
+/** Entries that live under the mobile “更多” sheet, respecting role. */
+export function getMobileMoreNav(user: UserProfile | null): NavItem[] {
+  if (!user) return [];
+  const canViewDashboard =
+    user.role === "ADMIN" || user.role === "EXECUTIVE" || user.role === "PROJECT_OWNER";
+  const canManageUsers = user.role === "ADMIN";
+  return [
+    HOME,
+    ...(canViewDashboard ? [DASHBOARD] : []),
+    ...(canManageUsers ? [USERS] : []),
   ];
 }
 
 export function isNavActive(pathname: string, href: string): boolean {
+  if (href === "#more") return false;
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 }
 

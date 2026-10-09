@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.agents.agentscope_tools import build_management_toolkit
 from app.agents.management_tools import ManagementToolExecutor
 from app.agents.stream_events import AgentStreamEvent, friendly_tool_name
+from app.agents.toolsets import GROUP_OF_TOOL, META_TOOL_NAME
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.llm.base import LLMError
@@ -100,6 +101,38 @@ def _split_system_and_rest(
     return "\n\n".join(systems), rest
 
 
+def _split_history_and_inbound(
+    rest: list[ChatMessage], message: str
+) -> tuple[list[ChatMessage], str]:
+    """Pick the latest user turn as inbound; flatten tool exchanges into text facts.
+
+    AgentScope ``observe`` rejects messages carrying tool calls or results, so
+    primed lookups (e.g. the fresh progress overview) are passed as assistant
+    text placed before the question instead of being dropped with the history.
+    """
+    last_user = max((i for i, item in enumerate(rest) if item.role == "user"), default=None)
+    if last_user is None:
+        return _flatten_tool_messages(rest), _CONTINUE_HINT
+    inbound = rest[last_user].content or message
+    history = _flatten_tool_messages(rest[:last_user] + rest[last_user + 1 :])
+    return history, inbound
+
+
+def _flatten_tool_messages(messages: list[ChatMessage]) -> list[ChatMessage]:
+    flattened: list[ChatMessage] = []
+    for item in messages:
+        if item.role == "tool":
+            flattened.append(
+                ChatMessage(role="assistant", content=f"[系统已查询的事实]\n{item.content or ''}")
+            )
+        elif item.role == "assistant" and item.tool_calls:
+            if item.content:
+                flattened.append(ChatMessage(role="assistant", content=item.content))
+        else:
+            flattened.append(item)
+    return flattened
+
+
 def _to_agentscope_messages(messages: list[ChatMessage]) -> list[Any]:
     from agentscope.message import (
         AssistantMsg,
@@ -178,7 +211,9 @@ def _build_agent(*, system_prompt: str, settings: Settings, executor: Management
         "name": "project_assistant",
         "system_prompt": system_prompt,
         "model": _build_openai_model(settings),
-        "toolkit": build_management_toolkit(executor),
+        "toolkit": build_management_toolkit(
+            executor, toolsets_enabled=bool(getattr(settings, "AGENT_TOOLSETS_ENABLED", False))
+        ),
         "react_config": ReActConfig(max_iters=int(getattr(settings, "AGENT_REASONING_ROUNDS", 20) or 20)),
     }
     try:
@@ -239,10 +274,8 @@ async def run_agentscope_chat_stream(
 
     factory = agent_factory or _build_agent
     agent = factory(system_prompt=system_prompt, settings=settings, executor=executor)
-    if rest and rest[-1].role == "user":
-        history, inbound = rest[:-1], UserMsg(name="user", content=rest[-1].content or message)
-    else:
-        history, inbound = rest, UserMsg(name="user", content=_CONTINUE_HINT)
+    history, inbound_text = _split_history_and_inbound(rest, message)
+    inbound = UserMsg(name="user", content=inbound_text)
 
     if history:
         try:
@@ -256,6 +289,7 @@ async def run_agentscope_chat_stream(
     saw_text = False
     pending_tool = ""
     pending_tool_call_id: str | None = None
+    log_mark = len(executor.execution_log)
     from app.agents.management_agent import CorrectionTracker, _correction_rounds
 
     tracker = CorrectionTracker(limit=_correction_rounds(settings))
@@ -299,6 +333,7 @@ async def run_agentscope_chat_stream(
             if key in {"TOOL_CALL_START", "ToolCallStartEvent"}:
                 pending_tool = _event_tool_name(event)
                 pending_tool_call_id = _event_tool_call_id(event)
+                log_mark = len(executor.execution_log)
                 if pending_tool:
                     yield AgentStreamEvent(
                         event="tool_start",
@@ -310,15 +345,34 @@ async def run_agentscope_chat_stream(
                     )
                 continue
             if key in {"TOOL_RESULT_END", "ToolResultEndEvent"}:
-                end_event = _latest_tool_end_event(executor)
-                if end_event is None and pending_tool:
-                    end_event = AgentStreamEvent(
+                if pending_tool == META_TOOL_NAME:
+                    yield AgentStreamEvent(
                         event="tool_end",
                         data={
                             "tool": pending_tool,
                             "label": friendly_tool_name(pending_tool),
                             "success": True,
                             "tool_call_id": pending_tool_call_id,
+                        },
+                    )
+                    pending_tool = ""
+                    pending_tool_call_id = None
+                    continue
+                executed = len(executor.execution_log) > log_mark
+                end_event = _latest_tool_end_event(executor) if executed else None
+                if end_event is None and pending_tool:
+                    # The runtime rejected the call before the executor ran it
+                    # (e.g. its tool group is not active yet).
+                    end_event = AgentStreamEvent(
+                        event="tool_end",
+                        data={
+                            "tool": pending_tool,
+                            "label": friendly_tool_name(pending_tool),
+                            "success": False,
+                            "tool_call_id": pending_tool_call_id,
+                            "error_code": (
+                                "TOOLSET_INACTIVE" if pending_tool in GROUP_OF_TOOL else None
+                            ),
                         },
                     )
                 if end_event is not None:

@@ -9,7 +9,13 @@ import { LogoutOutlined, MenuOutlined } from "@ant-design/icons";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useViewport } from "@/hooks/useViewport";
 import { APP_NAME } from "@/lib/env";
-import { getNavItems, isNavActive, ROLE_LABELS } from "@/lib/navigation";
+import {
+  getMobileMoreNav,
+  getMobilePrimaryNav,
+  getNavItems,
+  isNavActive,
+  ROLE_LABELS,
+} from "@/lib/navigation";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -24,8 +30,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isMobile = viewport === "mobile";
 
   const navItems = getNavItems(user);
+  const mobilePrimary = getMobilePrimaryNav(user);
+  const mobileMore = getMobileMoreNav(user);
   const initials = user?.name?.slice(0, 1) ?? "?";
   const roleLabel = user ? (ROLE_LABELS[user.role] ?? user.role) : "";
+  const moreActive = mobileMore.some((item) => isNavActive(pathname, item.href));
 
   if (!showChrome) {
     return (
@@ -96,7 +105,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Button
                   type="text"
                   icon={<MenuOutlined />}
-                  aria-label="打开导航菜单"
+                  aria-label="导航"
                   onClick={() => setMoreOpen(true)}
                 />
               ) : null}
@@ -120,14 +129,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="app-tabbar" aria-label="主导航">
-          {navItems.map((item) => {
+          {mobilePrimary.map((item) => {
             const Icon = item.icon;
+            if (item.href === "#more") {
+              return (
+                <button
+                  key={item.href}
+                  type="button"
+                  className={`app-tabbar__item${moreActive || moreOpen ? " app-tabbar__item--active" : ""}`}
+                  aria-label="更多导航"
+                  aria-expanded={moreOpen}
+                  onClick={() => setMoreOpen(true)}
+                >
+                  <span className="app-tabbar__icon">
+                    <Icon />
+                  </span>
+                  <span className="app-tabbar__label">{item.shortLabel ?? item.label}</span>
+                </button>
+              );
+            }
             const active = isNavActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={`app-tabbar__item${active ? " app-tabbar__item--active" : ""}`}
+                aria-current={active ? "page" : undefined}
               >
                 <span className="app-tabbar__icon">
                   <Icon />
@@ -139,14 +166,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <Drawer
-          title="导航"
-          placement="left"
+          title="更多导航"
+          placement="bottom"
           open={moreOpen}
           onClose={() => setMoreOpen(false)}
-          width={280}
+          height="auto"
+          styles={{ body: { paddingBottom: 24 } }}
         >
-          <nav className="app-drawer-nav" aria-label="全部导航">
-            {navItems.map((item) => {
+          <nav className="app-drawer-nav" aria-label="更多导航">
+            {mobileMore.map((item) => {
               const Icon = item.icon;
               const active = isNavActive(pathname, item.href);
               return (

@@ -235,7 +235,7 @@ def list_assignable_users(
     current_user: User = Depends(get_current_user),
 ) -> list[ProjectOwnerBrief]:
     """Users that can be set as project owners or task owners on this project."""
-    from app.models.user import UserRole, UserStatus
+    from app.models.user import UserStatus
     from app.repositories.user import UserRepository
 
     service = ProjectService(db)
@@ -250,25 +250,10 @@ def list_assignable_users(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
 
+    # Project owners must be able to staff tasks with people not yet on the
+    # project; the Agent's user lookup already searches every active user.
     users = UserRepository(db).list_all()
     active = [u for u in users if u.status == UserStatus.ACTIVE]
-    if current_user.role != UserRole.ADMIN:
-        # Non-admins see project owners / members / POs / admins only.
-        from sqlalchemy import select
-
-        from app.models.task import Task
-
-        participant_ids = set(
-            db.scalars(select(Task.owner_id).where(Task.project_id == project_id)).all()
-        )
-        participant_ids.add(project.owner_id)
-        participant_ids.update(o.id for o in project.owners)
-        active = [
-            u
-            for u in active
-            if u.id in participant_ids
-            or u.role in (UserRole.ADMIN, UserRole.PROJECT_OWNER, UserRole.EXECUTIVE)
-        ]
     return [ProjectOwnerBrief.model_validate(u) for u in active]
 
 

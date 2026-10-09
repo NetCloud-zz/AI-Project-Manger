@@ -7,6 +7,7 @@ import { AppCard } from "@/components/common/AppCard";
 import { NotificationStatusCard } from "@/components/agent/NotificationStatusCard";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ApiError } from "@/lib/http";
+import { newClientId } from "@/lib/id";
 import { createProposal, editProposal, getProposal, listProposals, proposalAction } from "@/services/change-proposals";
 import type { ChangeProposal } from "@/types/change-proposal";
 import type { PlanningContext } from "@/types/planning";
@@ -111,7 +112,7 @@ export function ChangeProposalPanel({ projectId, data, users, refreshKey, initia
 
   return <AppCard>
     <p>从“排期预览”保存方案，再核对完整差异、确认并执行。确认后编辑会清除旧确认；只有“已执行”表示计划已保存。</p>
-    <Space><Button onClick={() => void refresh()}>刷新方案列表</Button>{data.editable && <Button onClick={() => setDraft({ key: crypto.randomUUID(), reason: "" })}>新建草案</Button>}</Space>
+    <Space><Button onClick={() => void refresh()}>刷新方案列表</Button>{data.editable && <Button onClick={() => setDraft({ key: newClientId("proposal"), reason: "" })}>新建草案</Button>}</Space>
     <Modal open={Boolean(draft)} title="新建变更草案" onCancel={() => setDraft(null)} onOk={() => void createDraft()} confirmLoading={busy} okButtonProps={{ disabled: !draft || draft.reason.trim().length < 2 }}>
       <Input.TextArea placeholder="变更原因（至少两个字）" value={draft?.reason} onChange={event => setDraft(current => current ? { ...current, reason: event.target.value } : current)} />
     </Modal>

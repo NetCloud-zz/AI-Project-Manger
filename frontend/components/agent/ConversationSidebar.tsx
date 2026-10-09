@@ -4,6 +4,7 @@ import { Button, Dropdown, Input, Modal, Switch } from "antd";
 import {
   EditOutlined,
   InboxOutlined,
+  MenuFoldOutlined,
   MoreOutlined,
   PlusOutlined,
   UndoOutlined,
@@ -24,6 +25,8 @@ type Props = {
   onRename: (id: number, title: string) => void;
   onArchive: (id: number) => void;
   onRestore: (id: number) => void;
+  /** Large-screen rail only: collapse sidebar to free chat width. */
+  onCollapse?: () => void;
 };
 
 function formatWhen(iso: string | null): string {
@@ -52,6 +55,7 @@ export function ConversationSidebar({
   onRename,
   onArchive,
   onRestore,
+  onCollapse,
 }: Props) {
   const promptRename = (item: AgentConversation) => {
     let next = item.title;
@@ -77,6 +81,19 @@ export function ConversationSidebar({
   return (
     <aside className="agent-sidebar">
       <div className="agent-sidebar__top">
+        {onCollapse ? (
+          <div className="agent-sidebar__collapse-row">
+            <Button
+              type="text"
+              size="small"
+              icon={<MenuFoldOutlined />}
+              onClick={onCollapse}
+              aria-label="折叠对话列表"
+            >
+              折叠
+            </Button>
+          </div>
+        ) : null}
         <Button type="primary" block icon={<PlusOutlined />} onClick={onCreate}>
           新对话
         </Button>

@@ -146,6 +146,7 @@ export function ActionItemsPanel({
 
       {visible.length === 0 ? (
         <EmptyState
+          compact
           title={scope === "open" ? "暂无未完成行动项" : "暂无行动项"}
           description="行动项用于跟踪「谁在什么时间之前要做什么」。"
         />
@@ -159,7 +160,7 @@ export function ActionItemsPanel({
             summary={`共 ${list.total} 条`}
           />
           {list.paged.length === 0 ? (
-            <EmptyState title="无匹配结果" description="试试调整关键词。" />
+            <EmptyState compact title="无匹配结果" description="试试调整关键词。" />
           ) : (
             <div className="card-grid">
               {list.paged.map((item) => {

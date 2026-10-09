@@ -96,11 +96,46 @@ def _coerce_id_list(value: Any) -> list[int]:
     return ids
 
 
+def batch_create_argument_errors(args: dict[str, Any]) -> list[str]:
+    """Plan-time field check with the same rules ``batch_create_tasks`` applies per item."""
+    items = args.get("items")
+    if items in (None, [], ""):
+        items = args.get("tasks")
+    if isinstance(items, str):
+        try:
+            items = json.loads(items)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(items, list):
+        return []
+    errors: list[str] = []
+    for index, raw in enumerate(items, start=1):
+        if not isinstance(raw, dict):
+            continue
+        row = _normalize_create_row(raw)
+        unsupported = sorted(set(row) & _BATCH_CREATE_UNSUPPORTED)
+        unknown = sorted(set(row) - _BATCH_CREATE_SUPPORTED - _BATCH_CREATE_UNSUPPORTED)
+        if unsupported:
+            errors.append(
+                f"items[{index}] 含 {'、'.join(unsupported)}：里程碑用 create_milestone，"
+                "依赖用计划草案或专用依赖流程"
+            )
+        if unknown:
+            errors.append(
+                f"items[{index}] 含未知字段 {'、'.join(unknown)}；可用字段："
+                + "、".join(sorted(_BATCH_CREATE_SUPPORTED))
+            )
+        if not str(row.get("task_name") or "").strip():
+            errors.append(f"items[{index}] 缺少 task_name")
+    return errors
+
+
 def _normalize_create_row(raw: dict[str, Any]) -> dict[str, Any]:
     """Accept common model aliases before validation / persistence."""
     row = dict(raw)
+    alias = row.pop("name", None)
     if not str(row.get("task_name") or "").strip():
-        title = str(row.get("title") or "").strip()
+        title = str(row.get("title") or alias or "").strip()
         if title:
             row["task_name"] = title
     # Resolved $ref values often land in *_names as integers; move to *_ids.
@@ -332,6 +367,16 @@ class AgentBatchService:
 
     def batch_update_tasks(self, actor: User, args: dict[str, Any]) -> dict[str, Any]:
         items = self._incoming_items(args)
+        from app.services.agent_change_policy import require_change_reason
+
+        allowed = {"client_item_id", "task_id", "task_name", "work_stream",
+                   "owner_id", "owner_name", "change_reason"}
+        for raw in items:
+            if set(raw) - allowed:
+                raise DomainValidationError(
+                    "批量更新包含不支持的字段；日期请用 update_task/reschedule_task 或变更方案"
+                )
+            require_change_reason("update_task", raw)
         operation = self._operation(actor, args, "batch_update_tasks", expected=len(items))
         existing = self._items_by_client(operation.operation_id)
         names = _people_names(items)
@@ -395,6 +440,9 @@ class AgentBatchService:
                     updated = self.tasks.update_task(
                         task.id, payload, actor=actor, allow_core_fields=True
                     )
+                    from app.services.agent_change_policy import audit_change_reason
+
+                    audit_change_reason(self.db, actor, "update_task", updated.id, row.payload)
                     row.status = _SUCCESS
                     row.resource_id = str(updated.id)
                     row.error_code = None

@@ -66,3 +66,6 @@ dist/
 .claude/
 agent-transcripts/
 /tmp/
+
+# Assistant eval run outputs
+backend/evals/results/

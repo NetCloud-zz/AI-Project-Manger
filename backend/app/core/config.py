@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # --- Application ---
     APP_NAME: str = "project-agent"
-    APP_VERSION: str = "0.2.2"
+    APP_VERSION: str = "0.2.3"
     ENVIRONMENT: Environment = "local"
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
@@ -129,6 +129,15 @@ class Settings(BaseSettings):
     # LLM turns vs per-operation parameter retries. Do not collapse these into one cap.
     AGENT_REASONING_ROUNDS: int = Field(default=20, ge=1, le=50)
     AGENT_TOOL_CORRECTION_ROUNDS: int = Field(default=10, ge=1, le=20)
+    # Write authorization: ``regex`` keeps the heuristic rules; ``hybrid`` adds a
+    # fast-model verdict that regex vetoes (status / read-only framing) still override.
+    AGENT_INTENT_MODE: Literal["regex", "hybrid"] = "regex"
+    AGENT_INTENT_MIN_CONFIDENCE: float = Field(default=0.7, ge=0.0, le=1.0)
+    AGENT_INTENT_TIMEOUT_SECONDS: float = Field(default=15, gt=0, le=120)
+    # Core tools every turn; specialised groups are activated on demand.
+    AGENT_TOOLSETS_ENABLED: bool = True
+    # Emit one structured ``agent.trace`` log line per assistant request.
+    AGENT_TRACE_LOG: bool = True
     # Command planner budget (query + plan + repair). Not the ordinary ReAct loop.
     COMMAND_PLAN_MAX_ROUNDS: int = Field(default=6, ge=2, le=20)
     COMMAND_PLAN_MAX_QUERY_CALLS: int = Field(default=8, ge=0, le=40)

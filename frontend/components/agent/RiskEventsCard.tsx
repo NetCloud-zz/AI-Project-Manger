@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { Button, Space, Tag } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 
@@ -39,7 +38,10 @@ export function RiskEventsCard({ projectId }: { projectId: number }) {
   }, [projectId]);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   return (
@@ -86,7 +88,7 @@ export function RiskEventsCard({ projectId }: { projectId: number }) {
         <p className="meta-line">另有 {events.length - 5} 条，请到风险页面查看。</p>
       ) : null}
 
-      <Link href={`/projects/${projectId}/risks`}>打开风险与建议页面</Link>
+      <Button href={`/projects/${projectId}/risks`}>打开风险与建议页面</Button>
     </AppCard>
   );
 }

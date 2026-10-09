@@ -108,8 +108,12 @@ export function TaskBranchesPanel({ task, canManage, onChanged }: Props) {
   };
 
   if (task.branch_option_id != null) {
-    return <AppCard><p>此任务属于项目替代路线组，请在计划资料中查看和切换完整路线。</p>
-      <Link href={`/projects/${task.project_id}/planning`}>查看项目路线</Link></AppCard>;
+    return (
+      <AppCard>
+        <p>此任务属于项目替代路线组，请在计划资料中查看和切换完整路线。</p>
+        <Button href={`/projects/${task.project_id}/planning`}>查看项目路线</Button>
+      </AppCard>
+    );
   }
 
   const hasBranches = branches.some((item) => item.branch_root_id != null) || branches.length > 1;

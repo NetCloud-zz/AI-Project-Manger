@@ -5,12 +5,12 @@ from __future__ import annotations
 from sqlalchemy import Select, desc, or_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.permissions import project_ids_owned_by
 from app.models.action_item import (
     OPEN_ACTION_ITEM_STATUSES,
     ActionItem,
     ActionItemStatus,
 )
-from app.models.project import project_owners
 from app.models.task import Task
 from app.models.user import User, UserRole
 
@@ -62,20 +62,13 @@ class ActionItemRepository:
 
         if user.role in (UserRole.ADMIN, UserRole.EXECUTIVE):
             return list(self.db.scalars(stmt).unique().all())
-        if user.role == UserRole.PROJECT_OWNER:
-            co_owned = select(project_owners.c.project_id).where(
-                project_owners.c.user_id == user.id
-            )
-            stmt = stmt.where(
-                or_(ActionItem.project.has(owner_id=user.id), ActionItem.project_id.in_(co_owned))
-            )
-            return list(self.db.scalars(stmt).unique().all())
 
-        # Members see items they own or created, plus items in projects where they
-        # hold a task — a meeting action item is useless if the assignee can't see it.
+        # Project owners see everything on their projects; others see items they
+        # own/created, or items in projects where they hold a task.
         member_projects = select(Task.project_id).where(Task.owner_id == user.id)
         stmt = stmt.where(
             or_(
+                ActionItem.project_id.in_(project_ids_owned_by(user.id)),
                 ActionItem.owner_id == user.id,
                 ActionItem.created_by == user.id,
                 ActionItem.project_id.in_(member_projects),

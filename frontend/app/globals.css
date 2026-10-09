@@ -29,7 +29,7 @@
   --app-font-size-section: 16px;
   --app-font-size-card-title: 16px;
   --app-font-size-body: 14px;
-  --app-font-size-caption: 12px;
+  --app-font-size-caption: 13px;
   --app-font-size-metric: 24px;
 
   /* Spacing — 8pt scale; xxs is for tight metadata line runs only */
@@ -50,14 +50,18 @@
   --app-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --app-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
 
-  /* Layout */
+  /* Layout — fluid; no fixed 1600/1440 px business-page ceilings */
   --app-page-max-width: 100%;
-  --app-page-narrow: 100%;
-  --app-page-form: 100%;
-  --app-page-padding: var(--app-spacing-md);
+  --app-page-narrow: min(100%, 56rem);
+  --app-page-form: min(100%, 40rem);
+  --app-page-padding: clamp(0.75rem, 3vw, 1rem);
+  --app-page-gutter: 3%;
   --app-sidebar-width: 0px;
   --app-header-height: 52px;
   --app-tabbar-height: 60px;
+  --app-agent-sidebar-share: 0.2;
+  --app-project-main-fr: 3fr;
+  --app-project-aside-fr: 1fr;
 
   /* Components */
   --app-control-height: 44px;
@@ -90,9 +94,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Guards against long words and wide children forcing horizontal page scroll. */
+/* Prefer per-component overflow handling over hiding page overflow. */
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /*
@@ -214,11 +218,9 @@ a {
   right: 0;
   z-index: 100;
   display: flex;
-  justify-content: flex-start;
-  gap: 2px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  justify-content: space-around;
+  gap: 0;
+  overflow-x: visible;
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
@@ -230,18 +232,24 @@ a {
 }
 
 .app-tabbar__item {
-  flex: 1 0 auto;
-  min-width: 56px;
-  max-width: 88px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  font: inherit;
   font-size: 11px;
   font-weight: 500;
   color: var(--app-color-text-muted);
   transition: color 0.15s ease;
+  cursor: pointer;
 }
 
 .app-tabbar__label {
@@ -319,14 +327,15 @@ a {
  */
 .page-container {
   width: 100%;
-  max-width: var(--app-page-max-width);
+  max-width: none;
   min-width: 0;
   margin: 0 auto;
-  padding: var(--app-page-padding);
+  padding: var(--app-page-padding) max(var(--app-page-padding), var(--app-page-gutter));
   padding-bottom: calc(var(--app-page-padding) + var(--app-tabbar-height));
   display: flex;
   flex-direction: column;
   gap: var(--app-spacing-md);
+  box-sizing: border-box;
 }
 
 .page-container--narrow {
@@ -361,7 +370,15 @@ a {
 
 .page-header__text {
   min-width: 0;
-  flex: 1 1 260px;
+  flex: 1 1 12rem;
+}
+
+.page-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--app-spacing-sm);
+  margin-bottom: var(--app-spacing-xs);
 }
 
 .page-header__title {
@@ -371,6 +388,7 @@ a {
   line-height: 1.3;
   letter-spacing: -0.02em;
   color: var(--app-color-text);
+  overflow-wrap: anywhere;
 }
 
 .page-header__subtitle {
@@ -385,6 +403,25 @@ a {
   display: flex;
   gap: var(--app-spacing-sm);
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.action-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--app-spacing-sm);
+}
+
+.action-group .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.action-group .ant-btn .anticon {
+  flex-shrink: 0;
 }
 
 /* ==========================================================================
@@ -397,6 +434,10 @@ a {
   font-weight: 600;
   line-height: 1.4;
   color: var(--app-color-text);
+}
+
+.section-title--sub {
+  font-size: var(--app-font-size-card-title);
 }
 
 /* Extra breathing room above a new section, on top of the container gap. */
@@ -455,12 +496,17 @@ a {
     var(--app-card-padding);
   padding: var(--app-spacing-sm) var(--app-card-padding);
   border-bottom: 1px solid var(--app-color-border);
+  background: var(--app-color-surface-muted);
+  border-radius: var(--app-card-radius) var(--app-card-radius) 0 0;
 }
 
 .app-card__title {
+  margin: 0;
+  min-width: 0;
   font-size: var(--app-font-size-card-title);
   font-weight: 600;
   color: var(--app-color-text);
+  overflow-wrap: anywhere;
 }
 
 .app-card__footer {
@@ -540,8 +586,15 @@ a {
   gap: var(--app-spacing-md);
   padding: var(--app-spacing-xl) var(--app-spacing-md);
   text-align: center;
-  color: var(--app-color-text-muted);
+  color: var(--app-color-text-secondary);
   font-size: 13px;
+}
+
+.state-block--compact {
+  gap: var(--app-spacing-sm);
+  padding: var(--app-spacing-md);
+  align-items: flex-start;
+  text-align: left;
 }
 
 .state-block__icon {
@@ -557,12 +610,49 @@ a {
 .state-block__title {
   font-size: var(--app-font-size-body);
   font-weight: 600;
-  color: var(--app-color-text-secondary);
+  color: var(--app-color-text);
 }
 
 .state-block__description {
   max-width: 380px;
   line-height: 1.6;
+  color: var(--app-color-text-secondary);
+}
+
+.explanation-disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-sm);
+  min-width: 0;
+}
+
+.explanation-disclosure__summary {
+  min-width: 0;
+}
+
+.explanation-disclosure__toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--app-color-primary);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.explanation-disclosure__toggle:focus-visible {
+  outline: 2px solid var(--app-color-primary);
+  outline-offset: 2px;
+  border-radius: var(--app-radius-sm);
+}
+
+.explanation-disclosure__body {
+  min-width: 0;
 }
 
 /* ==========================================================================
@@ -722,7 +812,7 @@ a {
 .meta-line {
   font-size: var(--app-font-size-caption);
   line-height: 1.6;
-  color: var(--app-color-text-muted);
+  color: var(--app-color-text-secondary);
 }
 
 .meta-line + .meta-line {
@@ -958,6 +1048,8 @@ a {
 .agent-page-wrap {
   display: flex;
   min-height: 0;
+  container-type: inline-size;
+  container-name: agent-page;
 }
 
 .agent-page {
@@ -986,7 +1078,7 @@ a {
 
 .agent-page__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--app-spacing-sm);
   padding: var(--app-spacing-md) var(--app-spacing-md) 0;
 }
@@ -996,8 +1088,58 @@ a {
   min-width: 0;
 }
 
+/* Keep title + memory on one compact row (override page-header wrap / flex-basis). */
+.agent-page__header .page-header__row {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--app-spacing-sm);
+}
+
+.agent-page__header .page-header__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.agent-page__header .page-header__title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-page__header .page-header__action {
+  flex-shrink: 0;
+}
+
 .agent-page__menu {
-  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+/*
+ * Sidebar rail when the agent panel itself is wide enough (~48rem):
+ * ~20% sidebar share with chat remaining ≥75% of net columns.
+ * Not tied to viewport breakpoints (avoids coupling to global nav).
+ */
+@container agent-page (min-width: 48rem) {
+  .agent-page--with-sidebar:not(.agent-page--sidebar-collapsed)
+    .agent-page__sidebar-desktop {
+    display: flex;
+    flex: 0 0 calc(var(--app-agent-sidebar-share) * 100%);
+    min-width: 12rem;
+    max-width: 22%;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--app-color-border);
+    background: var(--app-color-surface-muted);
+  }
+
+  .agent-page--with-sidebar:not(.agent-page--sidebar-collapsed) .agent-page__menu {
+    display: none;
+  }
+
+  .agent-page--with-sidebar:not(.agent-page--sidebar-collapsed) .agent-sidebar {
+    width: 100%;
+    background: transparent;
+  }
 }
 
 .agent-sidebar {
@@ -1014,6 +1156,11 @@ a {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.agent-sidebar__collapse-row {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .agent-sidebar__archive-toggle {
@@ -1177,6 +1324,30 @@ a {
 
 .agent-bubble__content .md-content {
   line-height: 1.55;
+  max-width: 78ch;
+}
+
+.agent-bubble__content .md-content .md-table-wrap,
+.agent-bubble__content .md-content pre {
+  max-width: none;
+}
+
+.md-link {
+  color: var(--app-color-primary, #1677ff);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-link:focus-visible {
+  outline: 2px solid var(--app-color-primary, #1677ff);
+  outline-offset: 2px;
+}
+
+.md-link--external::after {
+  content: "↗";
+  margin-left: 0.15em;
+  font-size: 0.85em;
+  opacity: 0.75;
 }
 
 .agent-bubble__content .md-content p {
@@ -1215,6 +1386,11 @@ a {
 .agent-bubble__content .md-table-wrap {
   overflow-x: auto;
   margin: 0.6em 0;
+  max-width: 100%;
+}
+
+.advice-option-table {
+  overflow-x: auto;
   max-width: 100%;
 }
 
@@ -1312,9 +1488,53 @@ a {
   border-top: 1px solid var(--app-color-border);
 }
 
+.agent-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-spacing-sm);
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-composer__textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-composer__textarea.ant-input,
+.agent-composer__textarea.ant-input-outlined,
+.agent-composer .ant-input {
+  width: 100%;
+}
+
+.agent-composer .ant-input-textarea-show-count {
+  width: 100%;
+}
+
+.agent-composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-spacing-sm);
+  flex-wrap: wrap;
+}
+
+.agent-composer__hint {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.agent-composer__actions {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+
+/* Legacy row kept for any residual markup; prefer .agent-composer. */
 .agent-input-bar__row {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--app-spacing-sm);
 }
 
@@ -2350,10 +2570,10 @@ a {
     --app-font-size-section: 18px;
     --app-font-size-metric: 28px;
 
-    --app-page-max-width: 1600px;
-    --app-page-narrow: 900px;
-    --app-page-form: 640px;
-    --app-page-padding: 20px;
+    --app-page-narrow: min(100%, 56rem);
+    --app-page-form: min(100%, 40rem);
+    --app-page-padding: clamp(1rem, 2vw, 1.25rem);
+    --app-page-gutter: 2%;
 
     --app-control-height: 36px;
     --app-grid-gap: var(--app-spacing-md);
@@ -2542,9 +2762,10 @@ a {
   }
 
   .agent-page {
+    width: 100%;
     height: calc(100dvh - 2 * var(--app-spacing-md));
-    margin: var(--app-spacing-md) auto;
-    max-width: 1440px;
+    margin: var(--app-spacing-md) 0;
+    max-width: none;
     background: var(--app-color-surface);
     border: 1px solid var(--app-color-border);
     border-radius: var(--app-card-radius);
@@ -2552,29 +2773,12 @@ a {
     overflow: hidden;
   }
 
-  .agent-page--with-sidebar .agent-page__sidebar-desktop {
-    display: flex;
-    flex: 0 0 260px;
-    flex-direction: column;
-    min-width: 0;
-    border-right: 1px solid var(--app-color-border);
-    background: var(--app-color-surface-muted);
-  }
-
-  .agent-page--with-sidebar .agent-page__menu {
-    display: none;
-  }
-
-  .agent-page--with-sidebar .agent-sidebar {
-    width: 100%;
-    background: transparent;
-  }
-
   .agent-page-wrap {
     width: 100%;
-    max-width: var(--app-page-max-width);
+    max-width: none;
     margin: 0 auto;
-    padding: 0 var(--app-page-padding);
+    padding: 0 max(var(--app-page-padding), var(--app-page-gutter));
+    box-sizing: border-box;
   }
 
   .agent-bubble {
@@ -2625,7 +2829,7 @@ a {
 
 @media (min-width: 1024px) {
   :root {
-    --app-page-padding: var(--app-spacing-lg);
+    --app-page-padding: clamp(1.25rem, 2vw, 1.5rem);
     --app-sidebar-width: 200px;
     --app-chart-height: 440px;
   }
@@ -2666,14 +2870,14 @@ a {
 
   .project-detail-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, var(--app-project-main-fr)) minmax(0, var(--app-project-aside-fr));
     gap: var(--app-spacing-lg);
     align-items: start;
   }
 
   .task-detail-layout {
     display: grid;
-    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-columns: minmax(14rem, 0.9fr) minmax(0, 2.4fr);
     gap: var(--app-spacing-lg);
     align-items: start;
   }
@@ -2685,7 +2889,7 @@ a {
 
 @media (min-width: 1440px) {
   :root {
-    --app-page-padding: var(--app-spacing-xl);
+    --app-page-padding: clamp(1.5rem, 2vw, 2rem);
     --app-sidebar-width: 240px;
     --app-card-padding: 20px;
     --app-grid-min: 300px;
@@ -2693,11 +2897,7 @@ a {
   }
 
   .home-layout {
-    grid-template-columns: minmax(0, 1fr) 380px;
-  }
-
-  .project-detail-layout {
-    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.28fr);
   }
 }
 

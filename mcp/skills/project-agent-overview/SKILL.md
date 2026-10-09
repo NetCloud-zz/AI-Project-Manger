@@ -41,3 +41,13 @@ description: >-
 | Agent chat | `backend/app/services/conversation.py`, `backend/app/api/v1/agent.py` |
 | Tools | `backend/app/agents/` |
 | Frontend agent UI | `frontend/app/agent/page.tsx` |
+
+
+## Database-backed changes
+
+Read [database maintenance](../project-agent-database/SKILL.md) when changing
+models, relationships, permissions, query fields, or tools. The navigation at
+`mcp/database/README.md` links the full canonical details in `docs/database/`;
+`mcp/database/resources.json` indexes them using repository-root paths.
+Distinguish the collected structure snapshot from current implementation and the
+actual deployed schema. Update affected database references alongside code.

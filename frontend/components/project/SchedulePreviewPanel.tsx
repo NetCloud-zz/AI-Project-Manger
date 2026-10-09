@@ -5,6 +5,7 @@ import { Alert, App, Button, Checkbox, DatePicker, Form, Input, InputNumber, Mod
 import type { Dayjs } from "dayjs";
 import { AppCard } from "@/components/common/AppCard";
 import { ApiError } from "@/lib/http";
+import { newClientId } from "@/lib/id";
 import { createProposal, proposalAction } from "@/services/change-proposals";
 import { previewSchedule } from "@/services/scheduling";
 import type { PlanningContext } from "@/types/planning";
@@ -133,7 +134,7 @@ export function SchedulePreviewPanel({ projectId, data, onProposalCreated }: { p
     {result && <>
       <AppCard>
         <Alert type={result.candidate.feasible ? "success" : "warning"} title={result.candidate.feasible ? "候选排期满足已录入的约束" : "候选方案不可行或资料不完整"} />
-        {data.editable && result.candidate.feasible && <Button type="primary" onClick={() => setDraft({ key: crypto.randomUUID(), reason: "" })}>保存为待审方案</Button>}
+        {data.editable && result.candidate.feasible && <Button type="primary" onClick={() => setDraft({ key: newClientId("proposal"), reason: "" })}>保存为待审方案</Button>}
         <p>预测基准日：{result.as_of} · 日历版本：{result.calendar_version}</p>
         <p>当前计划预测完成：{result.current.project_finish_date ?? "无法确定"} → 候选预测完成：{result.candidate.project_finish_date ?? "无法确定"}（{delta(result.forecast_delta_workdays)}）</p>
         <p>当前目标：{result.current_target_date ?? "未设置"} · 候选目标：{result.proposed_target_date ?? "未设置"} · 候选目标偏差：{result.candidate.target_variance_calendar_days == null ? "无目标比较" : `${result.candidate.target_variance_calendar_days} 自然日`}</p>

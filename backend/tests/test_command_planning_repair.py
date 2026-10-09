@@ -393,9 +393,25 @@ async def test_planning_does_not_bypass_role_permissions(db, actor, role):
     actor.role = role
     db.commit()
     await collect(db, actor, request, source, Gateway({"items": items}))
+    # The actor owns the project, so only the read-only EXECUTIVE role is refused.
     assert db.scalar(select(func.count()).select_from(Task)) == (
-        1 if role in {UserRole.ADMIN, UserRole.PROJECT_OWNER} else 0
+        0 if role == UserRole.EXECUTIVE else 1
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [UserRole.PROJECT_OWNER, UserRole.MEMBER])
+async def test_planning_refuses_non_owner_of_project(db, actor, role):
+    request, source, items = setup(db, actor, 1)
+    other = User(name="其他负责人", username="qa_other", password_hash="unused", role=role)
+    db.add(other)
+    db.flush()
+    project = db.scalar(select(Project).where(Project.project_code == "PRJ-1001"))
+    project.owner_id = other.id
+    actor.role = role
+    db.commit()
+    await collect(db, actor, request, source, Gateway({"items": items}))
+    assert db.scalar(select(func.count()).select_from(Task)) == 0
 
 
 def test_failure_legacy_card_is_readable_without_raw_exception(db, actor):

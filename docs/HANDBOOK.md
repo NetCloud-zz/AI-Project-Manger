@@ -15,7 +15,7 @@
 | 专项附录 | 如 [AGENTSCOPE_ASSISTANT_RUNTIME.md](AGENTSCOPE_ASSISTANT_RUNTIME.md) | 技术专题，由本手册引用，不替代总文档或版本说明 |
 | 本地过程材料 | `reports/`（仅 README 约定） | 若需本机留档，勿写入真实姓名、业务项目名等隐私内容；不进入发行包 |
 
-当前版本：**0.2.2**（详见 [releases/0.2.2.md](releases/0.2.2.md)）。
+当前版本：**0.2.3**（详见 [releases/0.2.3.md](releases/0.2.3.md)）。
 
 ---
 
@@ -164,6 +164,7 @@ cd backend && .venv/bin/python -m app.scripts.check_data_integrity
 - 生成中会话槽位：离开页面 stop / 超时回收。
 - 模型名来自环境变量 `LLM_MODEL_*`，改 `.env` 后需重启 backend/worker。
 - 助手 ReAct 默认可走 AgentScope（`AGENT_RUNTIME`）；与原先差异见 [项目助手接入 AgentScope](AGENTSCOPE_ASSISTANT_RUNTIME.md)。
+- 写授权每轮单点判定（`AGENT_INTENT_MODE=regex|hybrid`）；专项工具按组按需激活（`AGENT_TOOLSETS_ENABLED`）；每轮 `agent.trace` 日志。设计、评测与灰度门槛见 [项目助手 Agent 开发计划](ASSISTANT_AGENT_ENGINEERING_PLAN.md)。
 
 Agent Skills 见 `mcp/skills/`。
 

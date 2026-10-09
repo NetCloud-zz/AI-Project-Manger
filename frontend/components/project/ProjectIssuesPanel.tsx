@@ -5,7 +5,6 @@ import Link from "next/link";
 import { App, Button, Form, Input, Modal, Select } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 
-import { AppCard } from "@/components/common/AppCard";
 import { SectionTitle } from "@/components/common/SectionTitle";
 import { AppPagination } from "@/components/data/AppPagination";
 import { DataToolbar } from "@/components/data/DataToolbar";
@@ -89,9 +88,7 @@ export function ProjectIssuesPanel({
       </SectionTitle>
 
       {issues.length === 0 ? (
-        <AppCard>
-          <p className="meta-line">暂无待解决的问题</p>
-        </AppCard>
+        <EmptyState compact title="暂无待解决问题" />
       ) : (
         <>
           <DataToolbar
@@ -102,7 +99,7 @@ export function ProjectIssuesPanel({
             summary={`共 ${list.total} 条`}
           />
           {list.paged.length === 0 ? (
-            <EmptyState title="无匹配结果" description="试试调整关键词。" />
+            <EmptyState compact title="无匹配结果" description="试试调整关键词。" />
           ) : (
             <div className="card-grid">
               {list.paged.map((item) => (

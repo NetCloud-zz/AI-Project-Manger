@@ -77,3 +77,18 @@ business writes.
 ## Seed
 
 `make seed` creates demo users from `SEED_*_PASSWORD`. Do not use defaults on shared hosts.
+
+
+## Database documentation and deployment state
+
+Use `mcp/database/README.md` and the
+[database skill](../project-agent-database/SKILL.md) to locate schema details and
+known drift before a schema-changing release. The collection date in
+`docs/database/` is not the current Alembic revision or proof of deployment.
+
+Documentation/skill-only updates need no image rebuild or migration. Backend
+runtime tools are code under `backend/app/agents/`, not loaded from `mcp/skills`.
+For backend-only runtime changes, rebuild backend, worker and scheduler together;
+verify tool imports/contract as well as service health when the tools changed.
+After an actual schema migration, update the affected reference files using
+verified metadata and retain the distinction between observed and pending schema.

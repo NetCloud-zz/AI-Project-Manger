@@ -1,0 +1,90 @@
+{
+  "format_version": 1,
+  "copyright": "Copyright 2024–2026 Jack Zhang. Apache License 2.0; retain NOTICE attribution.",
+  "kind": "repository_file_index",
+  "path_base": "repository_root",
+  "snapshot_collected_on": "2026-09-15",
+  "live_database_verified_by_this_index": false,
+  "notes": [
+    "This index does not register MCP resources or grant database permissions.",
+    "Canonical details remain under docs/database; preserve the repository layout.",
+    "Snapshot claims must be checked against current implementation and deployed schema."
+  ],
+  "resources": [
+    {
+      "id": "overview",
+      "path": "docs/database/DATABASE_OVERVIEW.md",
+      "role": "snapshot",
+      "description": "Database architecture and collected object counts"
+    },
+    {
+      "id": "dictionary",
+      "path": "docs/database/DATABASE_DICTIONARY.md",
+      "role": "snapshot",
+      "description": "Per-table columns, types, constraints, defaults and indexes"
+    },
+    {
+      "id": "relationships",
+      "path": "docs/database/DATABASE_RELATIONSHIPS.md",
+      "role": "snapshot",
+      "description": "Foreign keys, inferred relationships, join paths and evidence"
+    },
+    {
+      "id": "er_diagrams",
+      "path": "docs/database/DATABASE_ER.md",
+      "role": "snapshot",
+      "description": "Module-level entity relationship diagrams"
+    },
+    {
+      "id": "schema",
+      "path": "docs/database/database_schema.json",
+      "role": "snapshot",
+      "description": "Complete machine-readable catalog metadata"
+    },
+    {
+      "id": "query_rules",
+      "path": "docs/database/AGENT_QUERY_RULES.md",
+      "role": "policy",
+      "description": "Controlled query scope and data visibility rules"
+    },
+    {
+      "id": "agent_guide",
+      "path": "docs/database/AGENT_DATABASE_GUIDE.md",
+      "role": "snapshot_with_runtime_pointer",
+      "description": "Entity semantics and snapshot-era query capabilities"
+    },
+    {
+      "id": "semantic_layer",
+      "path": "docs/database/agent_semantic_layer.yaml",
+      "role": "snapshot",
+      "description": "Machine-readable entity semantics and proposed capabilities"
+    },
+    {
+      "id": "tool_inventory",
+      "path": "docs/database/AGENT_TOOLS.md",
+      "role": "snapshot",
+      "description": "Collected existing and proposed tools; not a runtime allowlist"
+    },
+    {
+      "id": "runtime_contract",
+      "path": "docs/database/PROJECT_DATABASE_TOOLS.md",
+      "role": "implementation_guide",
+      "description": "Current workspace tool integration and mutation-reason contract"
+    },
+    {
+      "id": "risks",
+      "path": "docs/database/DATABASE_RISKS.md",
+      "role": "snapshot",
+      "description": "Collected drift and risks requiring current verification"
+    }
+  ],
+  "implementation_paths": {
+    "tool_definitions": "backend/app/agents/database_tools.py",
+    "executor": "backend/app/agents/management_tools.py",
+    "mutation_policy": "backend/app/services/agent_change_policy.py",
+    "permissions": "backend/app/core/permissions.py",
+    "query_fields": "backend/app/agents/query/fields.py",
+    "models": "backend/app/models",
+    "migrations": "backend/alembic/versions"
+  }
+}

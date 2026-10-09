@@ -356,15 +356,31 @@ def should_use_command_plan(source: str) -> bool:
         return True
     if is_status_query(source):
         return False
+    return is_compound_instruction(source)
+
+
+def is_compound_instruction(source: str) -> bool:
+    """Three or more action verbs: route through the durable planner even for reads."""
     verbs = len(re.findall(r"创建|更新|修改|查询|列出|查一下|再建|登记|再查|弄个|建个", source))
     return verbs >= 3
 
 
-def guard_mutation(source: str | None, tool: str, args: dict[str, Any]) -> None:
-    """Hard block guessed values in vague edits, even when the LLM proposes numbers."""
+def guard_mutation(
+    source: str | None,
+    tool: str,
+    args: dict[str, Any],
+    *,
+    authorized: bool | None = None,
+) -> None:
+    """Hard block guessed values in vague edits, even when the LLM proposes numbers.
+
+    ``authorized`` carries an explicit per-turn verdict (hybrid intent mode);
+    ``None`` falls back to the regex mutation check on ``source``.
+    """
     if source is None:
         return
-    if not has_mutation_intent(source):
+    allowed = has_mutation_intent(source) if authorized is None else authorized
+    if not allowed:
         raise EntityResolutionError(
             "当前消息未授权业务写入，请明确需要执行的操作", code="CONFIRMATION_REQUIRED"
         )

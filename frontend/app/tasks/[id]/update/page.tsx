@@ -14,6 +14,8 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ApiError } from "@/lib/http";
+import { canActOnTask, canManageProject } from "@/lib/permissions";
+import { fetchProject } from "@/services/projects";
 import { fetchTask } from "@/services/tasks";
 import { submitProgress } from "@/services/progress";
 import type { Task } from "@/types/task";
@@ -55,14 +57,24 @@ function TaskUpdateInner() {
   const [markCompleted, setMarkCompleted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [managesProject, setManagesProject] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     fetchTask(taskId)
-      .then((data) => {
-        if (!cancelled) {
-          setTask(data);
-          setLoadError(null);
+      .then(async (data) => {
+        if (cancelled) return;
+        setTask(data);
+        setLoadError(null);
+        if (!user || user.role === "ADMIN" || data.owner_id === user.id) {
+          setManagesProject(false);
+          return;
+        }
+        try {
+          const project = await fetchProject(data.project_id);
+          if (!cancelled) setManagesProject(canManageProject(user, project));
+        } catch {
+          if (!cancelled) setManagesProject(false);
         }
       })
       .catch((error: unknown) => {
@@ -74,7 +86,7 @@ function TaskUpdateInner() {
     return () => {
       cancelled = true;
     };
-  }, [taskId, reloadKey]);
+  }, [taskId, reloadKey, user]);
 
   const retry = useCallback(() => {
     setLoading(true);
@@ -82,11 +94,7 @@ function TaskUpdateInner() {
     setReloadKey((value) => value + 1);
   }, []);
 
-  const canSubmit = Boolean(
-    user &&
-      task &&
-      (user.role === "ADMIN" || task.owner_id === user.id || user.role === "PROJECT_OWNER"),
-  );
+  const canSubmit = canActOnTask(user, task?.owner_id, managesProject);
 
   const onSubmit = async () => {
     if (!content.trim()) {

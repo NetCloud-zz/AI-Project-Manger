@@ -9,15 +9,25 @@ from collections.abc import AsyncIterator
 from sqlalchemy.orm import Session
 
 from app.agents.context_builder import with_current_time_context
+from app.agents.intent import decide_turn, regex_decision
 from app.agents.management_tools import (
-    MANAGEMENT_TOOLS,
     ManagementToolExecutor,
     extract_project_code,
     format_stub_reply,
     infer_stub_tools,
 )
 from app.agents.stream_events import AgentStreamEvent, friendly_tool_name
-from app.agents.tool_result import parse_tool_result_json, unwrap_tool_data
+from app.agents.tool_result import unwrap_tool_data
+from app.agents.toolsets import (
+    META_TOOL_NAME,
+    ToolsetState,
+    all_tools,
+    core_tools,
+    meta_tool_definition,
+    tool_schema_chars,
+    with_toolset_prompt,
+)
+from app.agents.trace import AgentTrace, emit_trace
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.llm.base import LLMError
@@ -26,11 +36,7 @@ from app.llm.schemas import ChatMessage, ToolCall
 from app.models.user import User
 from app.prompts import load_prompt
 from app.schemas.agent import AgentChatResponse
-from app.services.agent_entities import (
-    authorization_source,
-    requires_fresh_facts,
-    should_use_command_plan,
-)
+from app.services.agent_entities import requires_fresh_facts
 from app.services.management_query import ManagementQueryService
 
 logger = get_logger(__name__)
@@ -66,15 +72,17 @@ def _prior_user_texts(context_messages: list[ChatMessage] | None) -> list[str]:
     ]
 
 
-def _write_auth_source(
-    message: str,
-    *,
-    context_messages: list[ChatMessage] | None,
-    agent_request_id: int | None,
-) -> str | None:
-    if agent_request_id is None:
-        return None
-    return authorization_source(message, _prior_user_texts(context_messages))
+def _tool_result_record(data: dict) -> dict:
+    """Persisted tool outcome; mirrors ``ConversationService.stream_message``."""
+    record: dict = {"name": data.get("tool"), "success": bool(data.get("success", True))}
+    for key in ("tool_call_id", "operation_id"):
+        if data.get(key) is not None:
+            record[key] = data[key]
+    if data.get("error_code") is not None:
+        record["error_code"] = data["error_code"]
+        record["error_message"] = data.get("error_message")
+        record["retryable"] = data.get("retryable")
+    return record
 
 
 class CorrectionTracker:
@@ -169,6 +177,8 @@ class ManagementAgent:
         self._settings = settings or get_settings()
         self._injected_gateway = gateway is not None
         self._gateway = gateway or create_llm_gateway(self._settings)
+        #: Trace of the most recent ``chat`` / ``chat_stream`` call.
+        self.last_trace: AgentTrace | None = None
 
     async def chat(
         self,
@@ -179,152 +189,45 @@ class ManagementAgent:
         allow_writes: bool = True,
         agent_request_id: int | None = None,
     ) -> AgentChatResponse:
-        """Answer ``message`` (non-streaming)."""
-        if (
-            agent_request_id is not None
-            and allow_writes
-            and self._settings.COMMAND_PLAN_ENABLED
-            and should_use_command_plan(
-                authorization_source(message, _prior_user_texts(context_messages))
-            )
-            and self._gateway.configured
-        ):
-            from app.agents.command_agent import command_stream
-
-            reply, cards = [], []
-            async for event in command_stream(
-                self._db,
-                self._gateway,
-                self._settings,
-                message,
-                actor,
-                agent_request_id,
-                context_messages,
-            ):
-                if event.event == "delta":
-                    reply.append(event.data["content"])
-                elif event.event == "card":
-                    cards = [event.data]
-            return AgentChatResponse(reply="".join(reply), cards=cards, llm_used=True)
-        if not self._gateway.configured:
-            return self._stub_chat(
-                message,
-                actor=actor,
-                context_messages=context_messages,
-                allow_writes=allow_writes,
-                agent_request_id=agent_request_id,
-            )
-        if self._should_use_agentscope():
-            reply, cards = [], []
-            tools_used: list[str] = []
-            tool_results: list[dict] = []
-            async for event in self._agentscope_stream(
-                message,
-                actor=actor,
-                context_messages=context_messages,
-                allow_writes=allow_writes,
-                agent_request_id=agent_request_id,
-            ):
-                if event.event == "delta":
-                    reply.append(str(event.data.get("content") or ""))
-                elif event.event == "card":
-                    cards.append(event.data)
-                elif event.event == "tool_start":
-                    name = str(event.data.get("tool") or "")
-                    if name:
-                        tools_used.append(name)
-                elif event.event == "tool_end":
-                    tool_results.append(dict(event.data))
-            return AgentChatResponse(
-                reply="".join(reply) or "没有查到相关数据。",
-                tools_used=list(dict.fromkeys(tools_used)),
-                tool_results=tool_results,
-                cards=cards,
-                llm_used=True,
-            )
-
-        executor = ManagementToolExecutor(
-            self._db,
-            actor,
+        """Answer ``message`` (non-streaming) by collecting ``chat_stream`` events."""
+        reply: list[str] = []
+        tools_used: list[str] = []
+        tool_results: list[dict] = []
+        cards: list[dict] = []
+        async for event in self.chat_stream(
+            message,
+            actor=actor,
+            context_messages=context_messages,
             allow_writes=allow_writes,
             agent_request_id=agent_request_id,
-            source_message=_write_auth_source(
-                message, context_messages=context_messages, agent_request_id=agent_request_id
-            ),
+        ):
+            data = event.data or {}
+            if event.event == "delta":
+                reply.append(str(data.get("content") or ""))
+            elif event.event == "tool_start":
+                if data.get("tool"):
+                    tools_used.append(str(data["tool"]))
+            elif event.event == "tool_end":
+                tool_results.append(_tool_result_record(data))
+            elif event.event == "card":
+                if data.get("type") == "execution_plan":
+                    cards = [
+                        card
+                        for card in cards
+                        if not (
+                            card.get("type") == "execution_plan"
+                            and card.get("request_id") == data.get("request_id")
+                        )
+                    ]
+                cards.append(dict(data))
+        trace = self.last_trace
+        return AgentChatResponse(
+            reply="".join(reply) or "没有查到相关数据。",
+            tools_used=list(dict.fromkeys(tools_used)),
+            tool_results=tool_results,
+            cards=cards,
+            llm_used=bool(trace and trace.route != "stub"),
         )
-        messages = context_messages or [
-            ChatMessage(role="system", content=runtime_system_prompt(self._settings)),
-            ChatMessage(role="user", content=message),
-        ]
-        messages = self._prime_fresh_facts(messages, executor, message, actor)
-
-        try:
-            tracker = CorrectionTracker(limit=_correction_rounds(self._settings))
-            for _round in range(_reasoning_rounds(self._settings)):
-                response = await self._gateway.chat_with_tools(
-                    messages=messages,
-                    tools=MANAGEMENT_TOOLS,
-                    model=self._settings.LLM_MODEL_REASONING,
-                )
-                if not response.tool_calls:
-                    reply = response.content.strip() or "没有查到相关数据。"
-                    return AgentChatResponse(
-                        reply=reply,
-                        tools_used=list(dict.fromkeys(executor.tools_used)),
-                        tool_results=list(executor.execution_log),
-                        cards=list(executor.cards),
-                        llm_used=True,
-                    )
-
-                messages.append(
-                    ChatMessage(
-                        role="assistant",
-                        content=response.content or "",
-                        tool_calls=response.tool_calls,
-                    )
-                )
-                for call in response.tool_calls:
-                    tool_result = executor.execute(call.name, call.arguments, tool_call_id=call.id)
-                    parsed = parse_tool_result_json(tool_result)
-                    messages.append(
-                        ChatMessage(
-                            role="tool",
-                            content=tool_result,
-                            tool_call_id=call.id,
-                        )
-                    )
-                    if tracker.record(
-                        call.name, ok=parsed.ok, operation_id=parsed.operation_id
-                    ):
-                        return AgentChatResponse(
-                            reply=tracker.diagnosis(),
-                            tools_used=list(dict.fromkeys(executor.tools_used)),
-                            tool_results=list(executor.execution_log),
-                            cards=list(executor.cards),
-                            llm_used=True,
-                        )
-
-            logger.warning("agent.management.max_tool_rounds", rounds=_reasoning_rounds(self._settings))
-            return AgentChatResponse(
-                reply=_budget_exhausted_message(executor.execution_log),
-                tools_used=list(dict.fromkeys(executor.tools_used)),
-                tool_results=list(executor.execution_log),
-                cards=list(executor.cards),
-                llm_used=True,
-            )
-        except LLMError as exc:
-            logger.warning("agent.management.llm_error", error=str(exc))
-            stub = self._stub_chat(
-                message,
-                actor=actor,
-                context_messages=context_messages,
-                allow_writes=allow_writes,
-                agent_request_id=agent_request_id,
-            )
-            stub_prefix = "（AI 服务暂时不可用，以下为工具查询结果）\n\n"
-            unconfigured_prefix = "（LLM 未配置，以下为工具查询结果）\n\n"
-            stub.reply = stub_prefix + stub.reply.replace(unconfigured_prefix, "")
-            return stub
 
     async def chat_stream(
         self,
@@ -336,29 +239,49 @@ class ManagementAgent:
         agent_request_id: int | None = None,
     ) -> AsyncIterator[AgentStreamEvent]:
         """Stream answer events (delta / tool_*). Caller owns message_start/done."""
-        if (
-            agent_request_id is not None
-            and allow_writes
-            and self._settings.COMMAND_PLAN_ENABLED
-            and should_use_command_plan(
-                authorization_source(message, _prior_user_texts(context_messages))
-            )
-            and self._gateway.configured
-        ):
-            from app.agents.command_agent import command_stream
-
-            async for event in command_stream(
-                self._db,
-                self._gateway,
-                self._settings,
+        trace = AgentTrace(
+            request_id=agent_request_id,
+            actor_id=actor.id,
+            actor_role=getattr(actor.role, "value", str(actor.role)),
+            toolsets_enabled=self._settings.AGENT_TOOLSETS_ENABLED,
+        )
+        self.last_trace = trace
+        outcome: str | None = None
+        error: str | None = None
+        try:
+            async for event in self._route_stream(
                 message,
-                actor,
-                agent_request_id,
-                context_messages,
+                actor=actor,
+                context_messages=context_messages,
+                allow_writes=allow_writes,
+                agent_request_id=agent_request_id,
+                trace=trace,
             ):
+                trace.observe(event)
                 yield event
-            return
+        except (GeneratorExit, asyncio.CancelledError):
+            outcome = "aborted"
+            raise
+        except Exception as exc:
+            outcome, error = "error", type(exc).__name__
+            raise
+        finally:
+            trace.finish(outcome=outcome, error=error)
+            emit_trace(trace, log=self._settings.AGENT_TRACE_LOG)
+
+    async def _route_stream(
+        self,
+        message: str,
+        *,
+        actor: User,
+        context_messages: list[ChatMessage] | None,
+        allow_writes: bool,
+        agent_request_id: int | None,
+        trace: AgentTrace,
+    ) -> AsyncIterator[AgentStreamEvent]:
+        """Single routing point: stub, command planner or ReAct (AgentScope / legacy)."""
         if not self._gateway.configured:
+            trace.route = trace.runtime = "stub"
             async for event in self._stub_chat_stream(
                 message,
                 actor=actor,
@@ -368,122 +291,93 @@ class ManagementAgent:
             ):
                 yield event
             return
-        if self._should_use_agentscope():
-            async for event in self._agentscope_stream(
+
+        prior = _prior_user_texts(context_messages)
+        decision = (
+            await decide_turn(message, prior, settings=self._settings, gateway=self._gateway)
+            if allow_writes
+            else regex_decision(message, prior)
+        )
+        trace.intent = decision.as_dict()
+
+        if (
+            agent_request_id is not None
+            and allow_writes
+            and self._settings.COMMAND_PLAN_ENABLED
+            and decision.route_command_plan
+        ):
+            from app.agents.command_agent import command_stream
+
+            trace.route, trace.runtime = "command_plan", "planner"
+            async for event in command_stream(
+                self._db,
+                self._gateway,
+                self._settings,
                 message,
-                actor=actor,
-                context_messages=context_messages,
-                allow_writes=allow_writes,
-                agent_request_id=agent_request_id,
+                actor,
+                agent_request_id,
+                context_messages,
+                decision=decision,
             ):
                 yield event
             return
 
+        bound = agent_request_id is not None
         executor = ManagementToolExecutor(
             self._db,
             actor,
             allow_writes=allow_writes,
             agent_request_id=agent_request_id,
-            source_message=_write_auth_source(
-                message, context_messages=context_messages, agent_request_id=agent_request_id
-            ),
+            source_message=(decision.authorization_source or message) if bound else None,
+            write_authorized=decision.guard_authorized if bound else None,
         )
-        emitted_cards = 0
+        toolsets_enabled = self._settings.AGENT_TOOLSETS_ENABLED
         messages = context_messages or [
             ChatMessage(role="system", content=runtime_system_prompt(self._settings)),
             ChatMessage(role="user", content=message),
         ]
+        messages = with_toolset_prompt(messages, enabled=toolsets_enabled)
+        primed_from = len(executor.execution_log)
         messages = self._prime_fresh_facts(messages, executor, message, actor)
+        trace.primed_tools = [
+            str(record.get("name")) for record in executor.execution_log[primed_from:]
+        ]
+        trace.route = "react"
+        trace.system_prompt_chars = sum(
+            len(item.content or "") for item in messages if item.role == "system"
+        )
+        trace.tool_schema_chars = tool_schema_chars(
+            [*core_tools(), meta_tool_definition()] if toolsets_enabled else all_tools()
+        )
 
         try:
-            tracker = CorrectionTracker(limit=_correction_rounds(self._settings))
-            for _round in range(_reasoning_rounds(self._settings)):
-                content_parts: list[str] = []
-                tool_calls: list[ToolCall] = []
+            if self._should_use_agentscope():
+                from app.agents.agentscope_runtime import run_agentscope_chat_stream
 
-                async for delta in self._gateway.chat_with_tools_stream(
-                    messages=messages,
-                    tools=MANAGEMENT_TOOLS,
-                    model=self._settings.LLM_MODEL_REASONING,
+                trace.runtime = "agentscope"
+                async for event in run_agentscope_chat_stream(
+                    self._db,
+                    self._settings,
+                    message,
+                    actor=actor,
+                    context_messages=messages,
+                    executor=executor,
+                    agent_request_id=agent_request_id,
                 ):
-                    if delta.content:
-                        content_parts.append(delta.content)
-                        # Live token push; tool rounds almost never mix text + tools.
-                        yield AgentStreamEvent(event="delta", data={"content": delta.content})
-                    if delta.tool_calls:
-                        tool_calls = list(delta.tool_calls)
-
-                full_content = "".join(content_parts)
-                if tool_calls:
-                    messages.append(
-                        ChatMessage(
-                            role="assistant",
-                            content=full_content,
-                            tool_calls=tool_calls,
-                        )
-                    )
-                    for call in tool_calls:
-                        if agent_request_id is not None:
-                            from app.models.agent_request import AgentRequest
-
-                            req = self._db.get(AgentRequest, agent_request_id)
-                            if req is not None and req.cancel_requested:
-                                yield AgentStreamEvent(
-                                    event="delta",
-                                    data={"content": "（已停止）"},
-                                )
-                                return
-                        yield AgentStreamEvent(
-                            event="tool_start",
-                            data={
-                                "tool": call.name,
-                                "label": friendly_tool_name(call.name),
-                                "tool_call_id": call.id,
-                            },
-                        )
-                        envelope = executor.execute_result(
-                            call.name, call.arguments, tool_call_id=call.id
-                        )
-                        tool_result = envelope.to_json()
-                        yield AgentStreamEvent(
-                            event="tool_end",
-                            data=envelope.sse_payload(
-                                tool=call.name,
-                                label=friendly_tool_name(call.name),
-                            ),
-                        )
-                        for card in executor.cards[emitted_cards:]:
-                            yield AgentStreamEvent(event="card", data=card)
-                        emitted_cards = len(executor.cards)
-                        messages.append(
-                            ChatMessage(
-                                role="tool",
-                                content=tool_result,
-                                tool_call_id=call.id,
-                            )
-                        )
-                        if tracker.record(
-                            call.name, ok=envelope.ok, operation_id=envelope.operation_id
-                        ):
-                            yield AgentStreamEvent(
-                                event="delta", data={"content": tracker.diagnosis()}
-                            )
-                            return
-                    continue
-
-                if not full_content.strip():
-                    yield AgentStreamEvent(event="delta", data={"content": "没有查到相关数据。"})
+                    yield event
                 return
-
-            logger.warning(
-                "agent.management.max_tool_rounds", rounds=_reasoning_rounds(self._settings)
-            )
-            yield AgentStreamEvent(
-                event="delta",
-                data={"content": _budget_exhausted_message(executor.execution_log)},
-            )
+            trace.runtime = "legacy"
+            async for event in self._legacy_loop(
+                messages,
+                executor=executor,
+                agent_request_id=agent_request_id,
+                toolsets=ToolsetState(enabled=toolsets_enabled),
+                trace=trace,
+            ):
+                yield event
         except LLMError as exc:
-            logger.warning("agent.management.llm_error", error=str(exc))
+            logger.warning("agent.management.llm_error", error=str(exc), runtime=trace.runtime)
+            trace.error = "llm_error"
             stub_prefix = "（AI 服务暂时不可用，以下为工具查询结果）\n\n"
             async for event in self._stub_chat_stream(
                 message,
@@ -494,6 +388,90 @@ class ManagementAgent:
                 agent_request_id=agent_request_id,
             ):
                 yield event
+
+    async def _legacy_loop(
+        self,
+        messages: list[ChatMessage],
+        *,
+        executor: ManagementToolExecutor,
+        agent_request_id: int | None,
+        toolsets: ToolsetState,
+        trace: AgentTrace,
+    ) -> AsyncIterator[AgentStreamEvent]:
+        """In-house ReAct loop (no AgentScope, or an injected test gateway)."""
+        emitted_cards = 0
+        messages = list(messages)
+        tracker = CorrectionTracker(limit=_correction_rounds(self._settings))
+        for _round in range(_reasoning_rounds(self._settings)):
+            content_parts: list[str] = []
+            tool_calls: list[ToolCall] = []
+
+            async for delta in self._gateway.chat_with_tools_stream(
+                messages=messages,
+                tools=toolsets.tools(),
+                model=self._settings.LLM_MODEL_REASONING,
+            ):
+                if delta.content:
+                    content_parts.append(delta.content)
+                    # Live token push; tool rounds almost never mix text + tools.
+                    yield AgentStreamEvent(event="delta", data={"content": delta.content})
+                if delta.tool_calls:
+                    tool_calls = list(delta.tool_calls)
+
+            full_content = "".join(content_parts)
+            if not tool_calls:
+                if not full_content.strip():
+                    yield AgentStreamEvent(event="delta", data={"content": "没有查到相关数据。"})
+                return
+
+            messages.append(
+                ChatMessage(role="assistant", content=full_content, tool_calls=tool_calls)
+            )
+            for call in tool_calls:
+                if agent_request_id is not None:
+                    from app.models.agent_request import AgentRequest
+
+                    req = self._db.get(AgentRequest, agent_request_id)
+                    if req is not None and req.cancel_requested:
+                        yield AgentStreamEvent(event="delta", data={"content": "（已停止）"})
+                        return
+                yield AgentStreamEvent(
+                    event="tool_start",
+                    data={
+                        "tool": call.name,
+                        "label": friendly_tool_name(call.name),
+                        "tool_call_id": call.id,
+                    },
+                )
+                if call.name == META_TOOL_NAME:
+                    envelope = toolsets.reset(call.arguments or {}, tool_call_id=call.id)
+                    for name in toolsets.active:
+                        trace.note_toolset(name)
+                else:
+                    envelope = toolsets.inactive_error(
+                        call.name, tool_call_id=call.id
+                    ) or executor.execute_result(call.name, call.arguments, tool_call_id=call.id)
+                yield AgentStreamEvent(
+                    event="tool_end",
+                    data=envelope.sse_payload(
+                        tool=call.name, label=friendly_tool_name(call.name)
+                    ),
+                )
+                for card in executor.cards[emitted_cards:]:
+                    yield AgentStreamEvent(event="card", data=card)
+                emitted_cards = len(executor.cards)
+                messages.append(
+                    ChatMessage(role="tool", content=envelope.to_json(), tool_call_id=call.id)
+                )
+                if tracker.record(call.name, ok=envelope.ok, operation_id=envelope.operation_id):
+                    yield AgentStreamEvent(event="delta", data={"content": tracker.diagnosis()})
+                    return
+
+        logger.warning("agent.management.max_tool_rounds", rounds=_reasoning_rounds(self._settings))
+        yield AgentStreamEvent(
+            event="delta",
+            data={"content": _budget_exhausted_message(executor.execution_log)},
+        )
 
     def _should_use_agentscope(self) -> bool:
         runtime = getattr(self._settings, "AGENT_RUNTIME", "agentscope")
@@ -505,55 +483,6 @@ class ManagementAgent:
             return True
         logger.warning("agent.agentscope.unavailable_fallback_legacy")
         return False
-
-    async def _agentscope_stream(
-        self,
-        message: str,
-        *,
-        actor: User,
-        context_messages: list[ChatMessage] | None,
-        allow_writes: bool,
-        agent_request_id: int | None,
-    ) -> AsyncIterator[AgentStreamEvent]:
-        from app.agents.agentscope_runtime import run_agentscope_chat_stream
-
-        executor = ManagementToolExecutor(
-            self._db,
-            actor,
-            allow_writes=allow_writes,
-            agent_request_id=agent_request_id,
-            source_message=_write_auth_source(
-                message, context_messages=context_messages, agent_request_id=agent_request_id
-            ),
-        )
-        messages = context_messages or [
-            ChatMessage(role="system", content=runtime_system_prompt(self._settings)),
-            ChatMessage(role="user", content=message),
-        ]
-        messages = self._prime_fresh_facts(messages, executor, message, actor)
-        try:
-            async for event in run_agentscope_chat_stream(
-                self._db,
-                self._settings,
-                message,
-                actor=actor,
-                context_messages=messages,
-                executor=executor,
-                agent_request_id=agent_request_id,
-            ):
-                yield event
-        except LLMError as exc:
-            logger.warning("agent.management.llm_error", error=str(exc), runtime="agentscope")
-            stub_prefix = "（AI 服务暂时不可用，以下为工具查询结果）\n\n"
-            async for event in self._stub_chat_stream(
-                message,
-                actor=actor,
-                context_messages=context_messages,
-                reply_prefix=stub_prefix,
-                allow_writes=allow_writes,
-                agent_request_id=agent_request_id,
-            ):
-                yield event
 
     def _prime_fresh_facts(
         self,

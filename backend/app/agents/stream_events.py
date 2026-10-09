@@ -20,6 +20,7 @@ StreamEventName = Literal[
 ]
 
 TOOL_FRIENDLY_NAMES: dict[str, str] = {
+    "reset_tools": "加载专项工具",
     "list_projects": "查询项目列表",
     "get_project": "查询项目",
     "list_project_tasks": "查询任务",

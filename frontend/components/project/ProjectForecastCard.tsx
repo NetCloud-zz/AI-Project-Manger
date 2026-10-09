@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { Alert, Skeleton, Space, Tag, Tooltip } from "antd";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Button, Skeleton, Space, Tag, Tooltip } from "antd";
 
+import { ActionGroup } from "@/components/common/ActionGroup";
 import { AppCard } from "@/components/common/AppCard";
 import { SectionTitle } from "@/components/common/SectionTitle";
+import { ExplanationDisclosure } from "@/components/feedback/ExplanationDisclosure";
 import { ApiError } from "@/lib/http";
 import { fetchProjectForecast } from "@/services/projects";
 import {
@@ -23,6 +24,12 @@ type Props = {
 export function ProjectForecastCard({ projectId, visible }: Props) {
   const [data, setData] = useState<ProjectForecast | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "denied" | "failed">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const reload = useCallback(() => {
+    setState("loading");
+    setReloadKey((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -40,7 +47,7 @@ export function ProjectForecastCard({ projectId, visible }: Props) {
     return () => {
       alive = false;
     };
-  }, [projectId, visible]);
+  }, [projectId, visible, reloadKey]);
 
   if (!visible || state === "denied") return null;
   if (state === "loading") {
@@ -55,14 +62,26 @@ export function ProjectForecastCard({ projectId, visible }: Props) {
       <AppCard>
         <SectionTitle>交付预测</SectionTitle>
         <p className="meta-line">暂时算不出预测，请稍后重试。已承诺的目标日期不受影响。</p>
+        <ActionGroup>
+          <Button onClick={reload}>重新加载</Button>
+        </ActionGroup>
       </AppCard>
     );
   }
 
   const variance = data.variance_calendar_days;
+  const visiblePath = data.critical_path.slice(0, 3);
+  const hiddenPathCount = Math.max(0, data.critical_path.length - visiblePath.length);
+
   return (
     <AppCard stack="sm">
-      <SectionTitle extra={<Link href={`/projects/${projectId}/planning`}>去排期预览</Link>}>
+      <SectionTitle
+        extra={
+          <Button href={`/projects/${projectId}/planning`} size="small">
+            去排期预览
+          </Button>
+        }
+      >
         交付预测
       </SectionTitle>
       <Space wrap>
@@ -96,10 +115,28 @@ export function ProjectForecastCard({ projectId, visible }: Props) {
       )}
 
       {data.critical_path.length > 0 ? (
-        <>
-          <p className="meta-line">
-            关键路径 {data.critical_path.length} 项，这些任务没有机动时间：
-          </p>
+        <ExplanationDisclosure
+          summary={
+            <div>
+              <p className="meta-line">
+                关键路径 {data.critical_path.length} 项，这些任务没有机动时间：
+              </p>
+              <Space wrap>
+                {visiblePath.map((step) => (
+                  <Tooltip
+                    key={step.task_id}
+                    title={`${step.start_date} ~ ${step.finish_date}`}
+                  >
+                    <Tag color="red">{step.task_name}</Tag>
+                  </Tooltip>
+                ))}
+                {hiddenPathCount > 0 ? <Tag>+{hiddenPathCount} 项</Tag> : null}
+              </Space>
+            </div>
+          }
+          expandCount={hiddenPathCount > 0 ? hiddenPathCount : undefined}
+          defaultOpen={false}
+        >
           <Space wrap>
             {data.critical_path.map((step) => (
               <Tooltip
@@ -110,12 +147,12 @@ export function ProjectForecastCard({ projectId, visible }: Props) {
               </Tooltip>
             ))}
           </Space>
-        </>
-      ) : null}
-
-      <p className="meta-line">
-        预测由计划、依赖和工作日历推算，不改变已承诺的目标日期，也不计算人员容量约束。
-      </p>
+        </ExplanationDisclosure>
+      ) : (
+        <p className="meta-line">
+          预测由计划、依赖和工作日历推算，不改变已承诺的目标日期，也不计算人员容量约束。
+        </p>
+      )}
     </AppCard>
   );
 }

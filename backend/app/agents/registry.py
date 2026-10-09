@@ -155,7 +155,7 @@ _OVERRIDES: dict[str, RegisteredTool] = {
     ),
     "validate_project_plan": RegisteredTool(
         name="validate_project_plan",
-        risk_level=ToolRiskLevel.READ,
+        risk_level=ToolRiskLevel.LOW_WRITE,
     ),
     "apply_project_plan": RegisteredTool(
         name="apply_project_plan",

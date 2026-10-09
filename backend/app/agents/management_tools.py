@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.agents.database_tools import DATABASE_TOOLS, apply_database_contract
 from app.agents.tool_result import (
     ToolErrorCode,
     ToolResult,
@@ -1447,6 +1448,9 @@ for _tool in MANAGEMENT_TOOLS:
             "description": "任务的新名称，区别于定位目标的 target_task_name",
         }
 
+MANAGEMENT_TOOLS.extend(DATABASE_TOOLS)
+apply_database_contract(MANAGEMENT_TOOLS)
+
 #: Tools handled by ManagementPlanningService, named identically to its methods.
 _PLANNING_TOOLS = frozenset(
     {
@@ -1493,6 +1497,8 @@ WRITE_TOOLS = frozenset(
         "draft_project_plan",
         "update_project_plan_draft",
         "apply_project_plan",
+        "review_project_plan_draft",
+        "validate_project_plan",
         "propose_change",
         "execute_change_plan",
         "submit_progress",
@@ -1524,7 +1530,9 @@ class ManagementToolExecutor:
         agent_request_id: int | None = None,
         auto_commit: bool = True,
         source_message: str | None = None,
+        write_authorized: bool | None = None,
     ) -> None:
+        self._write_authorized = write_authorized
         self._query = ManagementQueryService(db)
         self._write = ManagementWriteService(db, auto_commit=auto_commit)
         self._plan = ManagementPlanningService(db)
@@ -1819,9 +1827,24 @@ class ManagementToolExecutor:
         self.cards.append(card)
 
     def _dispatch(self, name: str, args: dict[str, Any]) -> Any:
+        from app.services.agent_change_policy import require_change_reason
+
+        if name not in {tool.name for tool in MANAGEMENT_TOOLS}:
+            raise DomainValidationError("未登记的工具不可执行；禁止 SQL 和删除操作")
+        require_change_reason(name, args)
         actor = self._actor
+        if name == "get_database_tools":
+            from app.agents.database_tools import database_tool_catalog
+
+            return database_tool_catalog()
+        if name == "get_task":
+            return self._query.get_task(actor, task_code=args.get("task_code"))
+        if name == "get_plan_version":
+            return self._query.get_plan_version(actor, args)
         if name in WRITE_TOOLS:
-            guard_mutation(self._source_message, name, args)
+            guard_mutation(
+                self._source_message, name, args, authorized=self._write_authorized
+            )
         args = resolve_arguments(
             self._db, actor, name, args, source_message=self._source_message
         )

@@ -35,6 +35,7 @@ class ToolErrorCode(StrEnum):
     VALIDATION_FAILED = "VALIDATION_FAILED"
     PARTIAL_SUCCESS = "PARTIAL_SUCCESS"
     CORRECTION_BUDGET_EXCEEDED = "CORRECTION_BUDGET_EXCEEDED"
+    TOOLSET_INACTIVE = "TOOLSET_INACTIVE"
 
 
 _RETRYABLE = frozenset(
@@ -74,6 +75,7 @@ _LEGACY_CODE_ALIASES: dict[str, ToolErrorCode] = {
     "validation_failed": ToolErrorCode.VALIDATION_FAILED,
     "partial_success": ToolErrorCode.PARTIAL_SUCCESS,
     "correction_budget_exceeded": ToolErrorCode.CORRECTION_BUDGET_EXCEEDED,
+    "toolset_inactive": ToolErrorCode.TOOLSET_INACTIVE,
 }
 
 

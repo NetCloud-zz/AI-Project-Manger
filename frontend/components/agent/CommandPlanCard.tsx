@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Space, Tag } from "antd";
 import { AppCard } from "@/components/common/AppCard";
+import { ExplanationDisclosure } from "@/components/feedback/ExplanationDisclosure";
 import { request } from "@/lib/http";
 import type { CommandPlan } from "@/types/agent";
 
@@ -106,6 +107,8 @@ export function CommandPlanCard({ initial }: { initial: CommandPlan }) {
   const createdTaskCount = plan.created_task_count ?? 0;
   const createdMilestoneCount = plan.created_milestone_count ?? 0;
   const recovery = plan.recovery;
+  const successItems = plan.items.filter((item) => item.state === "SUCCEEDED");
+  const notableItems = plan.items.filter((item) => item.state !== "SUCCEEDED");
   return (
     <AppCard plain title="指令执行清单">
       {unplanned ? (
@@ -170,27 +173,56 @@ export function CommandPlanCard({ initial }: { initial: CommandPlan }) {
         <p>{plan.policy === "atomic" ? "全成全败" : "独立项继续，依赖项等待前置成功"}</p>
       ) : null}
       {!unplanned || plan.items.length > 0 ? (
-        <ol>
-          {plan.items.map((item) => (
-            <li key={item.item_id}>
-              <Tag
-                color={
-                  item.state === "SUCCEEDED"
-                    ? "green"
-                    : item.state === "UNKNOWN"
-                      ? "orange"
-                      : "default"
-                }
-              >
-                {labels[item.state] ?? item.state}
-              </Tag>{" "}
-              {toolLabel(item.tool) ? <strong>{toolLabel(item.tool)}</strong> : null}
-              {toolLabel(item.tool) ? " · " : null}
-              {item.source_text}
-              {item.result?.error && <p>{item.result.error.message}</p>}
-            </li>
-          ))}
-        </ol>
+        <>
+          {notableItems.length > 0 ? (
+            <ol>
+              {notableItems.map((item) => (
+                <li key={item.item_id}>
+                  <Tag
+                    color={
+                      item.state === "SUCCEEDED"
+                        ? "green"
+                        : item.state === "UNKNOWN"
+                          ? "orange"
+                          : item.state === "FAILED"
+                            ? "red"
+                            : "default"
+                    }
+                  >
+                    {labels[item.state] ?? item.state}
+                  </Tag>{" "}
+                  {toolLabel(item.tool) ? <strong>{toolLabel(item.tool)}</strong> : null}
+                  {toolLabel(item.tool) ? " · " : null}
+                  {item.source_text}
+                  {item.result?.error && <p>{item.result.error.message}</p>}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {successItems.length > 0 ? (
+            <ExplanationDisclosure
+              summary={
+                <p className="meta-line">
+                  成功步骤 {successItems.length} 项已折叠
+                  {notableItems.length === 0 ? "（无待处理/失败项）" : ""}
+                </p>
+              }
+              expandCount={successItems.length}
+              defaultOpen={notableItems.length === 0 && successItems.length <= 5}
+            >
+              <ol>
+                {successItems.map((item) => (
+                  <li key={item.item_id}>
+                    <Tag color="green">{labels[item.state] ?? item.state}</Tag>{" "}
+                    {toolLabel(item.tool) ? <strong>{toolLabel(item.tool)}</strong> : null}
+                    {toolLabel(item.tool) ? " · " : null}
+                    {item.source_text}
+                  </li>
+                ))}
+              </ol>
+            </ExplanationDisclosure>
+          ) : null}
+        </>
       ) : null}
       {error && <Alert type="error" title={error} />}
       <Space>

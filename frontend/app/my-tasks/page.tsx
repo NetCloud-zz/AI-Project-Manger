@@ -35,8 +35,14 @@ function MyTasksPageInner() {
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [filters, setFilters] = useState<FilterValues>({});
   const [sort, setSort] = useState<string | undefined>("due");
-  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const filterKey = `${debouncedKeyword}|${filters.status ?? ""}|${sort ?? ""}|${pageSize}`;
+  const [pageState, setPageState] = useState({ filterKey, page: 1 });
+  const page = pageState.filterKey === filterKey ? pageState.page : 1;
+  const setPage = useCallback(
+    (next: number) => setPageState({ filterKey, page: next }),
+    [filterKey],
+  );
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedKeyword(keyword.trim()), 250);
@@ -44,33 +50,33 @@ function MyTasksPageInner() {
   }, [keyword]);
 
   useEffect(() => {
-    setPage(1);
-  }, [debouncedKeyword, filters.status, sort, pageSize]);
-
-  useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    fetchMyTasks({
-      page,
-      pageSize,
-      status: filters.status,
-      q: debouncedKeyword || undefined,
-      sort: (sort as "due" | "name" | "project") || "due",
-    })
-      .then((data) => {
-        if (cancelled) return;
-        setTasks(data.items);
-        setTotal(data.total);
-        setFailed(false);
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      setLoading(true);
+      fetchMyTasks({
+        page,
+        pageSize,
+        status: filters.status,
+        q: debouncedKeyword || undefined,
+        sort: (sort as "due" | "name" | "project") || "due",
       })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        .then((data) => {
+          if (cancelled) return;
+          setTasks(data.items);
+          setTotal(data.total);
+          setFailed(false);
+        })
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [page, pageSize, filters.status, debouncedKeyword, sort, reloadKey]);
 
@@ -84,8 +90,8 @@ function MyTasksPageInner() {
     setDebouncedKeyword("");
     setFilters({});
     setSort("due");
-    setPage(1);
     setPageSize(20);
+    setPageState({ filterKey: `|||20`, page: 1 });
   }, []);
 
   const setFilter = useCallback((key: string, value: string | undefined) => {

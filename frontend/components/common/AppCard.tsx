@@ -3,6 +3,8 @@ import type { ElementType, ReactNode } from "react";
 type Props = {
   children: ReactNode;
   title?: ReactNode;
+  /** Semantic heading level for the card title. Defaults to span for legacy cards. */
+  titleLevel?: 2 | 3 | "span";
   extra?: ReactNode;
   footer?: ReactNode;
   /** Adds hover elevation; use for cards that link somewhere. */
@@ -18,6 +20,7 @@ type Props = {
 export function AppCard({
   children,
   title,
+  titleLevel = "span",
   extra,
   footer,
   interactive,
@@ -36,12 +39,14 @@ export function AppCard({
     .join(" ");
 
   const body = stack ? <div className={`stack-${stack}`}>{children}</div> : children;
+  const TitleTag: ElementType =
+    titleLevel === 2 ? "h2" : titleLevel === 3 ? "h3" : "span";
 
   return (
     <Tag className={classes}>
       {title || extra ? (
         <div className="app-card__header">
-          {title ? <span className="app-card__title">{title}</span> : <span />}
+          {title ? <TitleTag className="app-card__title">{title}</TitleTag> : <span />}
           {extra}
         </div>
       ) : null}

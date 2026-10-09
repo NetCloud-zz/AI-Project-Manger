@@ -10,8 +10,17 @@ Copyright 2024–2026 Jack Zhang. Licensed under the Apache License, Version 2.0
 ```bash
 cd backend
 .venv/bin/pytest tests/test_assistant_repair_*.py tests/test_command_planning_repair.py \
-  tests/test_batch_owner_refs.py tests/test_mutation_intent.py -q
+  tests/test_batch_owner_refs.py tests/test_mutation_intent.py tests/test_agent_rework.py -q
 ```
+
+真实模型评测（需 `LLM_*`；端到端只用一次性库，勿指向业务库）：
+
+```bash
+make eval-intent repeat=3                                   # regex vs hybrid 意图判定
+make eval-agent db=postgresql+psycopg://eval:***@127.0.0.1:55439/eval intent=hybrid toolsets=on
+```
+
+`AGENT_INTENT_MODE=hybrid` 灰度门槛：意图评测 unsafe = 0，端到端评测 unsafe = 0 且通过率不低于 regex。
 
 ## 2. 隔离 PostgreSQL
 

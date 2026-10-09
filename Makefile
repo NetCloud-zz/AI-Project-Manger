@@ -7,6 +7,7 @@ VENV     := $(BACKEND)/.venv
 PY       := $(VENV)/bin/python
 PIP      := $(VENV)/bin/pip
 COMPOSE  := docker compose
+VERSION  ?= 0.2.3
 
 .PHONY: help
 help: ## Show this help
@@ -83,6 +84,15 @@ test-integration: ## Integration tests (marker); requires live Postgres/Redis
 eval-list: ## Show assistant eval cases (OPT-11 YAML; no live LLM)
 	@sed -n '1,120p' $(BACKEND)/evals/cases.yaml
 
+.PHONY: eval-intent
+eval-intent: ## Intent eval, regex vs hybrid (live LLM; no DB): make eval-intent repeat=3
+	cd $(BACKEND) && .venv/bin/python -m app.evals --mode intent --intent-mode both --repeat $(or $(repeat),1)
+
+.PHONY: eval-agent
+eval-agent: ## End-to-end agent eval (live LLM; disposable DB): make eval-agent db=postgresql+psycopg://...
+	cd $(BACKEND) && .venv/bin/python -m app.evals --mode agent --intent-mode $(or $(intent),hybrid) \
+		--toolsets $(or $(toolsets),on) --repeat $(or $(repeat),1) $(if $(db),--database-url "$(db)",)
+
 .PHONY: check
 check: lint test ## Lint + unit tests
 
@@ -134,9 +144,9 @@ build: ## Build all images
 .PHONY: package
 package: ## Build local source release tarball under dist/
 	@mkdir -p dist
-	@rm -f dist/project-agent-0.2.2.tar.gz
+	@rm -f dist/project-agent-$(VERSION).tar.gz
 	@STAGE=$$(mktemp -d) && \
-	NAME=project-agent-0.2.2 && \
+	NAME=project-agent-$(VERSION) && \
 	mkdir -p "$$STAGE/$$NAME" && \
 	rsync -a \
 	  --exclude='.git/' \
@@ -158,14 +168,19 @@ package: ## Build local source release tarball under dist/
 	  --exclude='logs/' \
 	  --exclude='tmp/' \
 	  --exclude='.cursor/' \
+	  --exclude='.agents/' \
 	  --exclude='agent-transcripts/' \
 	  --exclude='docs/qa/' \
 	  --exclude='docs/ops/' \
 	  --exclude='docs/reports/' \
+	  --exclude='docs/assets/' \
 	  --exclude='docs/SYSTEM_FIX_PLAN.md' \
 	  --exclude='docs/MERGED_TEST_SUMMARY.md' \
 	  --exclude='docs/TEST_REPORT.md' \
 	  --exclude='docs/FULL_FUNCTION_TESTING_GUIDE.md' \
+	  --exclude='docs/WEB_UI_UX_IMPROVEMENT_PLAN.md' \
+	  --exclude='frontend/scripts/' \
+	  --exclude='skills-lock.json' \
 	  --exclude='*.dump' \
 	  --exclude='*.sql.gz' \
 	  ./ "$$STAGE/$$NAME/" && \

@@ -5,7 +5,7 @@ from __future__ import annotations
 TASK_QUERY_FIELDS: dict[str, str] = {
     "task_id": "id",
     "id": "id",
-    "task_code": "id",  # no separate code; id used for equality
+    "task_code": "task_code",
     "task_name": "task_name",
     "title": "task_name",
     "project_id": "project_id",
